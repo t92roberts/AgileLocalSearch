@@ -22,6 +22,29 @@ public:
 	}
 };
 
+class Sprints {
+public:
+	vector<Sprint> sprints;
+
+	Sprints(vector<Sprint> sprints) {
+		this->sprints = sprints;
+	}
+
+	string toString() {
+		string outputString = "";
+
+		for (int i = 0; i < this->sprints.size(); ++i) {
+			outputString += this->sprints[i].toString();
+
+			if (i < this->sprints.size() - 1) {
+				outputString += "\n";
+			}
+		}
+
+		return outputString;
+	}
+};
+
 class Story {
 public:
 	int storyNumber, businessValue, storyPoints;
@@ -69,25 +92,6 @@ public:
 	}
 };
 
-class Sprints {
-public:
-	vector<Sprint> sprints;
-
-	Sprints(vector<Sprint> sprints) {
-		this->sprints = sprints;
-	}
-
-	string toString() {
-		string outputString = "";
-
-		for (int i = 0; i < this->sprints.size(); ++i) {
-			outputString += this->sprints[i].toString() + "\n";
-		}
-
-		return outputString;
-	}
-};
-
 class Stories {
 public:
 	vector<Story> stories;
@@ -100,7 +104,11 @@ public:
 		string outputString = "";
 
 		for (int i = 0; i < this->stories.size(); ++i) {
-			outputString += this->stories[i].toString() + "\n";
+			outputString += this->stories[i].toString();
+
+			if (i < this->stories.size() - 1) {
+				outputString += "\n";
+			}
 		}
 
 		return outputString;
@@ -121,7 +129,7 @@ public:
 		for (int i = 0; i < this->roadmap.size(); ++i) {
 			outputString += "Story " + to_string(i);;
 			if (this->roadmap[i] == -1) {
-				outputString += " => No sprint ";
+				outputString += " => No sprint\n";
 			} else {
 				outputString += " => Sprint " + to_string(this->roadmap[i]) + "\n";
 			}
@@ -151,7 +159,7 @@ int main(int argc, char* argv[]) {
 	sprintData.push_back(sprint1);
 
 	Sprints sprints = Sprints(sprintData);
-	cout << sprints.toString() << endl;
+	cout << sprints.toString() << endl << endl;
 
 	/////////////////////////////////////////////////////////////////
 
@@ -168,16 +176,17 @@ int main(int argc, char* argv[]) {
 	storyData.push_back(story2);
 
 	Stories stories = Stories(storyData);
-	cout << stories.toString() << endl;
+	cout << stories.toString() << endl << endl;
 
 	/////////////////////////////////////////////////////////////////
 
-	vector<int> solution; 
+	vector<int> assignment; 
 
-	solution.push_back(0);
-	solution.push_back(1);
-	solution.push_back(-1); // -1 means not assigned to any sprint
+	// -1 means the story is not assigned to any sprint
+	assignment.push_back(randomInt(-1, numberOfSprints - 1));
+	assignment.push_back(randomInt(-1, numberOfSprints - 1));
+	assignment.push_back(randomInt(-1, numberOfSprints - 1));
 
-	Roadmap roadmap = Roadmap(solution);
-	cout << roadmap.toString() << endl;
+	Roadmap roadmap = Roadmap(assignment);
+	cout << roadmap.toString();
 }
