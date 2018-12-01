@@ -62,6 +62,45 @@ public:
 	}
 };
 
+class Epic {
+public:
+	int epicNumber;
+	vector<Story> stories;
+
+	Epic() {};
+
+	Epic(int epicNumber, vector<Story> stories) {
+		this->epicNumber = epicNumber;
+		this->stories = stories;
+	}
+
+	string printStories() {
+		if (this->stories.size() > 0) {
+			string storiesString = "";
+
+			for (int i = 0; i < this->stories.size(); ++i) {
+				if (i == 0) {
+					storiesString += "Story " + to_string(this->stories[i].storyNumber);
+				}
+				else {
+					storiesString += ", Story " + to_string(this->stories[i].storyNumber);
+				}
+			}
+
+			return storiesString;
+		}
+		else {
+			return "None";
+		}
+	}
+
+	string toString() {
+		return "Epic " + to_string(epicNumber)
+			+ " (stories: " + printStories()
+			+ ")";
+	}
+};
+
 class Sprint {
 public:
 	int sprintNumber, sprintCapacity, sprintBonus;
@@ -110,6 +149,38 @@ public:
 	Roadmap(vector<Story> stories, vector<Sprint> sprints) {
 		this->stories = stories;
 		this->sprints = sprints;
+	}
+
+	string printStoryRoadmap() {
+		string outputString = "";
+
+		for (pair<Story, Sprint> pair : storiesToSprints) {
+			Story story = pair.first;
+			Sprint sprint = pair.second;
+
+			outputString += story.toString() + " => " + sprint.toString() + "\n";
+		}
+
+		return outputString;
+	}
+
+	string printSprintRoadmap() {
+		string outputString = "";
+
+		for (pair <Sprint, vector<Story>> pair : sprintsToStories) {
+			Sprint sprint = pair.first;
+			vector<Story> sprintStories = pair.second;
+
+			outputString += sprint.toString();
+
+			for (Story story : sprintStories) {
+				outputString += "\n  >> " + story.toString();
+			}
+
+			outputString += "\n\n";
+		}
+
+		return outputString;
 	}
 
 	void addStoryToSprint(Story story, Sprint sprint) {
@@ -189,6 +260,57 @@ public:
 	bool isFeasible() {
 		return sprintCapacitiesSatisifed() && storyDependenciesSatisfied();
 	}
+
+	int numberOfSprintCapacitiesViolated() {
+		int counter = 0;
+
+		for (pair<Sprint, vector<Story>> pair : sprintsToStories) {
+			Sprint sprint = pair.first;
+			vector<Story> sprintStories = pair.second;
+
+			// Sum up the story points of all the stories assigned to the sprint
+			int assignedStoryPoints = 0;
+			for (Story story : sprintStories) {
+				assignedStoryPoints += story.storyPoints;
+			}
+
+			// Check if the sprint is overloaded
+			if (!sprint.withinCapacity(assignedStoryPoints))
+				// The story points assigned are not within the sprint's capacity
+				counter += 1;
+		}
+
+		// All sprints are within capacity
+		return counter;
+	}
+
+	int numberOfStoryDependenciesViolated() {
+		int counter = 0;
+
+		for (pair<Story, Sprint> assignment : storiesToSprints) {
+			Story story = assignment.first;
+			Sprint assignedSprint = assignment.second;
+
+			for (Story dependee : story.dependencies) {
+				// Only stories that are assigned to a sprint are in the map
+				if (storiesToSprints.find(dependee) == storiesToSprints.end()) {
+					// The dependee isn't assigned to a sprint
+					counter += 1;
+				}
+				else {
+					Sprint dependeeAssignedSprint = storiesToSprints[dependee];
+
+					// Check where the story is assigned compared to its dependee
+					if (assignedSprint <= dependeeAssignedSprint)
+						// The story is assigned to an earlier sprint than its dependee
+						counter += 1;
+				}
+			}
+		}
+
+		// All stories have their dependees assigned to an earlier sprint
+		return counter;
+	}
 };
 
 int main(int argc, char* argv[]) {
@@ -209,6 +331,24 @@ int main(int argc, char* argv[]) {
 	
 	for (Story story : stories) {
 		cout << story.toString() << endl;
+	}
+
+	cout << endl;
+
+	// Epics ////////////////////////////////////////////////////////
+	/////////////////////////////////////////////////////////////////
+
+	vector<Epic> epics;
+	Epic epic0(0, { story0, story1 });
+	Epic epic1(1, { story2 });
+
+	epics.push_back(epic0);
+	epics.push_back(epic1);
+
+	cout << "Epics:" << endl;
+
+	for (Epic epic : epics) {
+		cout << epic.toString() << endl;
 	}
 
 	cout << endl;
@@ -241,8 +381,12 @@ int main(int argc, char* argv[]) {
 	roadmap.addStoryToSprint(story1, sprint1);
 	roadmap.addStoryToSprint(story2, sprint1);
 
-	cout << "Value: " << roadmap.calculateValue() << endl;
-	cout << "Capacities feasible: " << boolalpha << roadmap.sprintCapacitiesSatisifed() << endl;
-	cout << "All dependees assigned: " << boolalpha << roadmap.storyDependenciesSatisfied() << endl;
-	cout << "Is feasible: " << boolalpha << roadmap.isFeasible() << endl << endl;
+	cout << roadmap.printStoryRoadmap() << endl;
+	cout << roadmap.printSprintRoadmap() << endl;
+
+	cout << "Roadmap value: " << roadmap.calculateValue() << endl << endl;
+
+	cout << "Is feasible: " << boolalpha << roadmap.isFeasible() << endl;
+	cout << "(" << roadmap.numberOfSprintCapacitiesViolated() << " sprint capacities exceeded)" << endl;
+	cout << "(" << roadmap.numberOfStoryDependenciesViolated() << " story dependencies unassigned)" << endl;
 }
