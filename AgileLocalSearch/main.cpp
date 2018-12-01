@@ -3,6 +3,7 @@
 #include <string>
 #include <map>
 #include <algorithm>
+#include <time.h>
 
 using namespace std;
 
@@ -12,7 +13,7 @@ public:
 	vector<Story> dependencies;
 
 	Story() {};
-	
+
 	Story(int storyNumber, int businessValue, int storyPoints) {
 		this->storyNumber = storyNumber;
 		this->businessValue = businessValue;
@@ -54,50 +55,15 @@ public:
 		return this->storyNumber < other.storyNumber;
 	}
 
+	bool operator <= (const Story& other) const {
+		return this->storyNumber <= other.storyNumber;
+	}
+
 	string toString() {
 		return "Story " + to_string(storyNumber)
 			+ " (business value: " + to_string(businessValue)
 			+ ", story points: " + to_string(storyPoints)
 			+ ", dependencies: " + printDependencies() + ")";
-	}
-};
-
-class Epic {
-public:
-	int epicNumber;
-	vector<Story> stories;
-
-	Epic() {};
-
-	Epic(int epicNumber, vector<Story> stories) {
-		this->epicNumber = epicNumber;
-		this->stories = stories;
-	}
-
-	string printStories() {
-		if (this->stories.size() > 0) {
-			string storiesString = "";
-
-			for (int i = 0; i < this->stories.size(); ++i) {
-				if (i == 0) {
-					storiesString += "Story " + to_string(this->stories[i].storyNumber);
-				}
-				else {
-					storiesString += ", Story " + to_string(this->stories[i].storyNumber);
-				}
-			}
-
-			return storiesString;
-		}
-		else {
-			return "None";
-		}
-	}
-
-	string toString() {
-		return "Epic " + to_string(epicNumber)
-			+ " (stories: " + printStories()
-			+ ")";
 	}
 };
 
@@ -158,7 +124,7 @@ public:
 			Story story = pair.first;
 			Sprint sprint = pair.second;
 
-			outputString += story.toString() + " => " + sprint.toString() + "\n";
+			outputString += story.toString() + "\n  >> " + sprint.toString() + "\n";
 		}
 
 		return outputString;
@@ -313,80 +279,239 @@ public:
 	}
 };
 
+// Returns a random int between min and max (both inclusive) using a uniform distribution
+int randomInt(int min, int max) {
+	return rand() % (max - min + 1) + min;
+}
+
+// Returns a random position in the input vector according to the given probability distribution of getting each position
+int randomIntDiscreteDistribution(vector<double> probabilities) {
+	// Randomly generated percentage
+	double randomPercentage = (double)(rand() % 1024) / 1024;
+
+	// Threshold representing the upper limit of each probability band
+	double threshold = probabilities[0];
+
+	for (int i = 0; i < probabilities.size(); ++i) {
+		// If the random percentage is within this vector position's probability threshold, return the position
+		if (randomPercentage < threshold)
+			return i;
+		else
+			// If not, extend the threshold to the next probability band
+			threshold += probabilities[i + 1];
+	}
+}
+
+// Uses the parametric equation of a geometric sequence to return a vector of doubles
+vector<double> geometricSequence(double a, double r, double n) {
+	vector<double> sequence;
+
+	for (int i = 0; i < n; ++i) {
+		sequence.push_back(a * pow(r, i));
+	}
+
+	return sequence;
+}
+
+/*
+// Adapted from:
+// GeeksforGeeks. (2018). Detect Cycle in a Directed Graph - GeeksforGeeks. [online] Available at: https://www.geeksforgeeks.org/detect-cycle-in-a-graph/ [Accessed 12 Nov. 2018].
+// This function is a variation of DFSUytil() in https://www.geeksforgeeks.org/archives/18212
+*/
+// Helper function that recursively steps through the directed graph to find a cycle
+bool _isCyclic(int v, bool visited[], bool *recStack, vector<Story> allStories) {
+	if (!visited[v]) {
+		// Mark the current story as visited and part of recursion stack
+		visited[v] = true;
+		recStack[v] = true;
+
+		// Recur for all the dependencies of this story 
+		vector<Story> dependencies = allStories[v].dependencies;
+
+		for (Story dependee : dependencies) {
+			int dependeeStoryNumber = dependee.storyNumber;
+			if (!visited[dependeeStoryNumber] && _isCyclic(dependeeStoryNumber, visited, recStack, allStories))
+				return true;
+			else if (recStack[dependeeStoryNumber])
+				return true;
+		}
+	}
+
+	recStack[v] = false; // remove the story from recursion stack
+	return false;
+}
+
+/*
+// Adapted from:
+// GeeksforGeeks. (2018). Detect Cycle in a Directed Graph - GeeksforGeeks. [online] Available at: https://www.geeksforgeeks.org/detect-cycle-in-a-graph/ [Accessed 12 Nov. 2018].
+// This function is a variation of DFS() in https://www.geeksforgeeks.org/archives/18212
+*/
+// Returns true if the DAG of dependencies between stories has a cycle, false if not
+bool isCyclic(vector <Story> allStories) {
+	// Mark all the stories as not visited and not part of recursion stack
+	bool *visited = new bool[allStories.size()];
+	bool *recStack = new bool[allStories.size()];
+
+	for (int i = 0; i < allStories.size(); ++i) {
+		visited[i] = false;
+		recStack[i] = false;
+	}
+
+	// Call the recursive helper function on each story to detect cycles in different DFS trees
+	for (int i = 0; i < allStories.size(); ++i) {
+		if (_isCyclic(i, visited, recStack, allStories))
+			return true;
+	}
+
+	return false;
+}
+
+// Returns a vector of Story objects filled with random values
+vector<Story> randomlyGenerateStories(int numberOfStories, int minBusinessValue, int maxBusinessValue, int minStoryPoints, int maxStoryPoints) {
+	vector<Story> storyData;
+
+	// Geometric sequence of probabilities for the discrete distribution random number generator
+	vector<double> probabilities = geometricSequence(0.5, 0.5, (double)numberOfStories);
+
+	// Create stories with random values
+	for (int i = 0; i < numberOfStories; ++i) {
+		int businessValue = randomInt(minBusinessValue, maxBusinessValue);
+		int storyPoints = randomInt(minStoryPoints, maxStoryPoints);
+
+		storyData.push_back(Story(i, businessValue, storyPoints));
+	}
+
+	for (int i = 0; i < numberOfStories; ++i) {
+		// The maximum number of dependencies that story i can have
+		// (can't force a specific number of dependencies as it might create cycles in the graph of dependencies between stories)
+		int maxNumberOfDependencies = randomIntDiscreteDistribution(probabilities);
+
+		for (int j = 0; j < maxNumberOfDependencies; ++j) {
+			// Pick a random story as a potential dependency of story i
+			Story potentialDependee = storyData[randomInt(0, numberOfStories - 1)];
+
+			// Check if the dependency is the same as story i
+			bool isSelfLoop = potentialDependee == storyData[i];
+
+			// Check if the dependency is already a dependency of story i
+			bool isAlreadyDependency = find(storyData[i].dependencies.begin(), storyData[i].dependencies.end(), potentialDependee) != storyData[i].dependencies.end();
+
+			// Retry with another random story
+			if (isSelfLoop || isAlreadyDependency) {
+				--j;
+				continue;
+			}
+
+			// Add the dependency to story i
+			storyData[i].dependencies.push_back(potentialDependee);
+
+			// Check if adding the dependency created a cycle in the graph of dependencies (which makes it unsolvable)
+			bool dependencyCreatesCycle = isCyclic(storyData);
+
+			if (dependencyCreatesCycle) {
+				// Remove the offending dependency
+				storyData[i].dependencies.pop_back();
+			}
+		}
+	}
+
+	return storyData;
+}
+
+// Returns a vector of Sprint objects filled with random values
+vector<Sprint> randomlyGenerateSprints(int numberOfSprints, int minCapacity, int maxCapacity) {
+	vector<Sprint> sprintData;
+
+	for (int i = 0; i < numberOfSprints; ++i) {
+		int capacity = randomInt(minCapacity, maxCapacity);
+
+		// Sprint(sprintNumber, sprintCapacity, sprintBonus)
+		sprintData.push_back(Sprint(i, capacity, numberOfSprints - i));
+	}
+
+	return sprintData;
+}
+
 int main(int argc, char* argv[]) {
-	// Stories //////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////
+	// Seed the random number generator
+	srand(time(NULL));
 
-	vector<Story> stories;
+	// The number of full time employees able to work on tasks (to estimate the sprint velocity)
+	int numberOfFTEs = 5;
 
-	Story story0(0, 10, 5);
-	Story story1(1, 8, 4, { story0 });
-	Story story2(2, 6, 3, { story1 });
-	
-	stories.push_back(story0);
-	stories.push_back(story1);
-	stories.push_back(story2);
+	// The number of sprints available in the roadmap
+	int numberOfSprints;
+	// Holds the data about each sprint
+	vector<Sprint> sprintData;
 
-	cout << "Stories:" << endl;
-	
-	for (Story story : stories) {
+	// The number of stories in the product backlog
+	int numberOfStories;
+	// Holds the data about each user story
+	vector<Story> storyData;
+
+	switch (argc) {
+	case 3:
+		numberOfSprints = stoi(argv[1]);
+		numberOfStories = stoi(argv[2]);
+
+		// Generate some test data to optimise
+		storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
+		sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
+
+		break;
+	default:
+		Story story0(0, 10, 5);
+		Story story1(1, 8, 4, { story0 });
+		Story story2(2, 6, 3, { story1 });
+
+		storyData.push_back(story0);
+		storyData.push_back(story1);
+		storyData.push_back(story2);
+
+		numberOfStories = storyData.size();
+
+		Sprint sprint0(0, 5, 2);
+		Sprint sprint1(1, 5, 1);
+
+		sprintData.push_back(sprint0);
+		sprintData.push_back(sprint1);
+
+		numberOfSprints = sprintData.size();
+
+		break;
+	}
+
+	for (Story story : storyData) {
 		cout << story.toString() << endl;
 	}
 
 	cout << endl;
 
-	// Epics ////////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////
-
-	vector<Epic> epics;
-	Epic epic0(0, { story0, story1 });
-	Epic epic1(1, { story2 });
-
-	epics.push_back(epic0);
-	epics.push_back(epic1);
-
-	cout << "Epics:" << endl;
-
-	for (Epic epic : epics) {
-		cout << epic.toString() << endl;
-	}
-
-	cout << endl;
-
-	// Sprints //////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////
-
-	vector<Sprint> sprints;
-
-	Sprint sprint0(0, 5, 2);
-	Sprint sprint1(1, 5, 1);
-
-	sprints.push_back(sprint0);
-	sprints.push_back(sprint1);
-
-	cout << "Sprints:" << endl;
-
-	for (Sprint sprint : sprints) {
+	for (Sprint sprint : sprintData) {
 		cout << sprint.toString() << endl;
 	}
 
-	cout << "-------------------------------------------------------------------" << endl;
+	cout << endl;
+	cout << "----------------------------------------------------------------" << endl;
+	cout << endl;
 
-	// Roadmap //////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////
+	// Generate a complete (but possibly infeasible) roadmap by assigning stories to random sprints
+	Roadmap randomRoadmap(storyData, sprintData);
 
-	Roadmap roadmap(stories, sprints);
-	
-	roadmap.addStoryToSprint(story0, sprint0);
-	roadmap.addStoryToSprint(story1, sprint1);
-	roadmap.addStoryToSprint(story2, sprint1);
+	for (Story story : storyData) {
+		Sprint randomSprint = sprintData[randomInt(0, sprintData.size() - 1)];
+		randomRoadmap.addStoryToSprint(story, randomSprint);
+	}
 
-	cout << roadmap.printStoryRoadmap() << endl;
-	cout << roadmap.printSprintRoadmap() << endl;
+	cout << randomRoadmap.printSprintRoadmap() << endl;
 
-	cout << "Roadmap value: " << roadmap.calculateValue() << endl << endl;
+	cout << endl;
+	cout << "----------------------------------------------------------------" << endl;
+	cout << endl;
 
-	cout << "Is feasible: " << boolalpha << roadmap.isFeasible() << endl;
-	cout << "(" << roadmap.numberOfSprintCapacitiesViolated() << " sprint capacities exceeded)" << endl;
-	cout << "(" << roadmap.numberOfStoryDependenciesViolated() << " story dependencies unassigned)" << endl;
+	cout << "Roadmap value: " << randomRoadmap.calculateValue() << endl << endl;
+
+	cout << "Is feasible: " << boolalpha << randomRoadmap.isFeasible() << endl;
+	cout << "(" << randomRoadmap.numberOfSprintCapacitiesViolated() << " sprint capacities exceeded)" << endl;
+	cout << "(" << randomRoadmap.numberOfStoryDependenciesViolated() << " story dependencies unassigned)" << endl;
 }
