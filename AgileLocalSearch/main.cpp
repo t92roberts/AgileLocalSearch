@@ -1,9 +1,8 @@
 #include <iostream>
-#include <time.h>
-#include <string>
 #include <vector>
-#include <algorithm>
+#include <string>
 #include <map>
+#include <algorithm>
 
 using namespace std;
 
@@ -47,11 +46,11 @@ public:
 		}
 	}
 
-	bool operator ==(const Story& other) const {
+	bool operator == (const Story& other) const {
 		return this->storyNumber == other.storyNumber;
 	}
 
-	bool operator <(const Story& other) const {
+	bool operator < (const Story& other) const {
 		return this->storyNumber < other.storyNumber;
 	}
 
@@ -66,7 +65,6 @@ public:
 class Sprint {
 public:
 	int sprintNumber, sprintCapacity, sprintBonus;
-	vector<Story> assignedStories;
 
 	Sprint() {};
 
@@ -76,30 +74,20 @@ public:
 		this->sprintBonus = bonus;
 	}
 
-	void removeStory(Story story) {
-		this->assignedStories.erase(remove(assignedStories.begin(), assignedStories.end(), story), assignedStories.end());
-	}
-
-	void addStory(Story story) {
-		this->assignedStories.push_back(story);
-	}
-
 	bool withinCapacity(int storyPoints) {
 		return storyPoints <= this->sprintCapacity;
 	}
 
-	int calculateValue() {
-		int value = 0;
-
-		for (Story story : this->assignedStories) {
-			value += story.businessValue * this->sprintBonus;
-		}
-
-		return value;
+	bool operator == (const Sprint& other) const {
+		return this->sprintNumber == other.sprintNumber;
 	}
 
-	bool operator==(const Sprint& other) {
-		return this->sprintNumber == other.sprintNumber;
+	bool operator < (const Sprint& other) const {
+		return this->sprintNumber < other.sprintNumber;
+	}
+
+	bool operator <= (const Sprint& other) const {
+		return this->sprintNumber <= other.sprintNumber;
 	}
 
 	string toString() {
@@ -114,6 +102,9 @@ public:
 	vector<Story> stories;
 	vector<Sprint> sprints;
 
+	map<Story, Sprint> storiesToSprints;
+	map<Sprint, vector<Story>> sprintsToStories;
+
 	Roadmap() {};
 
 	Roadmap(vector<Story> stories, vector<Sprint> sprints) {
@@ -121,35 +112,42 @@ public:
 		this->sprints = sprints;
 	}
 
-	void addStoryToSprint(int storyNumber, int sprintNumber) {
-		Story story = this->stories[storyNumber];
-		Sprint *sprint = &this->sprints[sprintNumber];
-
-		sprint->addStory(story);
+	void addStoryToSprint(Story story, Sprint sprint) {
+		storiesToSprints[story] = sprint;
+		sprintsToStories[sprint].push_back(story);
 	}
 
-	void removeStoryFromSprint(int storyNumber, int sprintNumber) {
-		Story story = this->stories[storyNumber];
-		Sprint *sprint = &this->sprints[sprintNumber];
-
-		sprint->removeStory(story);
+	void removeStoryFromSprint(Story story, Sprint sprint) {
+		storiesToSprints.erase(storiesToSprints.find(story));
+		sprintsToStories[sprint].erase(remove(sprintsToStories[sprint].begin(), sprintsToStories[sprint].end(), story), sprintsToStories[sprint].end());
 	}
 
-	void moveStory(int storyNumber, int fromSprintNumber, int toSprintNumber) {
-		Story story = this->stories[storyNumber];
-		Sprint *fromSprint = &this->sprints[fromSprintNumber];
-		Sprint *toSprint = &this->sprints[toSprintNumber];
+	void moveStory(Story story, Sprint from, Sprint to) {
+		removeStoryFromSprint(story, from);
+		addStoryToSprint(story, to);
+	}
 
-		fromSprint->removeStory(story);
-		toSprint->addStory(story);
+	int calculateValue() {
+		int totalValue = 0;
+
+		for (pair<Story, Sprint> pair : storiesToSprints) {
+			Story story = pair.first;
+			Sprint sprint = pair.second;
+
+			totalValue += story.businessValue * sprint.sprintBonus;
+		}
+
+		return totalValue;
 	}
 
 	bool sprintCapacitiesSatisifed() {
-		for (Sprint sprint : this->sprints) {
-			int assignedStoryPoints = 0;
+		for (pair<Sprint, vector<Story>> pair : sprintsToStories) {
+			Sprint sprint = pair.first;
+			vector<Story> sprintStories = pair.second;
 
 			// Sum up the story points of all the stories assigned to the sprint
-			for (Story story : sprint.assignedStories) {
+			int assignedStoryPoints = 0;
+			for (Story story : sprintStories) {
 				assignedStoryPoints += story.storyPoints;
 			}
 
@@ -159,34 +157,25 @@ public:
 				return false;
 		}
 
-		// All sprints are filled within capacity
+		// All sprints are within capacity
 		return true;
 	}
 
 	bool storyDependenciesSatisfied() {
-		map<Story, Sprint> assignments;
-
-		// Build a mapping from story to sprint (because a sprint knows which stories are assigned to it, but a story doesn't know which sprint it's assigned to)
-		for (Sprint sprint : this->sprints) {
-			for (Story story : sprint.assignedStories) {
-				
-				assignments[story] = sprint;
-			}
-		}
-
-		for (map<Story, Sprint>::iterator it = assignments.begin(); it != assignments.end(); ++it) {
-			Story story = it->first;
-			Sprint sprint = it->second;
+		for (pair<Story, Sprint> assignment : storiesToSprints) {
+			Story story = assignment.first;
+			Sprint assignedSprint = assignment.second;
 
 			for (Story dependee : story.dependencies) {
-				// Only stories that were assigned to a sprint will have been added to the map, but not all stories may have been assigned
-				// Check if the dependee was assigned to any sprint (i.e. it's a key in the map)
-				if (assignments.find(dependee) == assignments.end()) {
-					// The dependee is not in the map, so it was never assigned to a sprint
+				// Only stories that are assigned to a sprint are in the map
+				if (storiesToSprints.find(dependee) == storiesToSprints.end()) {
+					// The dependee isn't assigned to a sprint
 					return false;
 				} else {
+					Sprint dependeeAssignedSprint = storiesToSprints[dependee];
+
 					// Check where the story is assigned compared to its dependee
-					if (story.storyNumber <= dependee.storyNumber)
+					if (assignedSprint <= dependeeAssignedSprint)
 						// The story is assigned to an earlier sprint than its dependee
 						return false;
 				}
@@ -200,27 +189,9 @@ public:
 	bool isFeasible() {
 		return sprintCapacitiesSatisifed() && storyDependenciesSatisfied();
 	}
-
-	int calculateValue() {
-		int value = 0;
-
-		for (Sprint sprint : this->sprints) {
-			value += sprint.calculateValue();
-		}
-
-		return value;
-	}
 };
 
-// Returns a random int between min and max (both inclusive) using a uniform distribution
-int randomInt(int min, int max) {
-	return rand() % (max - min + 1) + min;
-}
-
 int main(int argc, char* argv[]) {
-	// Seed the random number generator
-	srand(time(NULL));
-
 	// Stories //////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////////
 
@@ -266,12 +237,12 @@ int main(int argc, char* argv[]) {
 
 	Roadmap roadmap(stories, sprints);
 	
-	roadmap.addStoryToSprint(0, 0);
-	roadmap.addStoryToSprint(1, 1);
-	roadmap.removeStoryFromSprint(0, 0);
+	roadmap.addStoryToSprint(story0, sprint0);
+	roadmap.addStoryToSprint(story1, sprint1);
+	roadmap.addStoryToSprint(story2, sprint1);
 
 	cout << "Value: " << roadmap.calculateValue() << endl;
 	cout << "Capacities feasible: " << boolalpha << roadmap.sprintCapacitiesSatisifed() << endl;
 	cout << "All dependees assigned: " << boolalpha << roadmap.storyDependenciesSatisfied() << endl;
-	cout << "Is feasible: " << boolalpha << roadmap.isFeasible() << endl;
+	cout << "Is feasible: " << boolalpha << roadmap.isFeasible() << endl << endl;
 }
