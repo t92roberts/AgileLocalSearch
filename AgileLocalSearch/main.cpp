@@ -67,6 +67,49 @@ public:
 	}
 };
 
+class Epic {
+public:
+	int epicNumber;
+	vector<Story> stories;
+
+	Epic() {};
+
+	Epic(int epicNumber) {
+		this->epicNumber = epicNumber;
+	}
+
+	Epic(int epicNumber, vector<Story> stories) {
+		this->epicNumber = epicNumber;
+		this->stories = stories;
+	}
+
+	string printStories() {
+		if (this->stories.size() > 0) {
+			string storiesString = "";
+
+			for (int i = 0; i < this->stories.size(); ++i) {
+				if (i == 0) {
+					storiesString += "Story " + to_string(this->stories[i].storyNumber);
+				}
+				else {
+					storiesString += ", Story " + to_string(this->stories[i].storyNumber);
+				}
+			}
+
+			return storiesString;
+		}
+		else {
+			return "None";
+		}
+	}
+
+	string toString() {
+		return "Epic " + to_string(epicNumber)
+			+ " (stories: " + printStories()
+			+ ")";
+	}
+};
+
 class Sprint {
 public:
 	int sprintNumber, sprintCapacity, sprintBonus;
@@ -107,8 +150,8 @@ public:
 	vector<Story> stories;
 	vector<Sprint> sprints;
 
-	map<Story, Sprint> storiesToSprints;
-	map<Sprint, vector<Story>> sprintsToStories;
+	map<Story, Sprint> storyToSprint;
+	map<Sprint, vector<Story>> sprintToStories;
 
 	Roadmap() {};
 
@@ -120,7 +163,7 @@ public:
 	string printStoryRoadmap() {
 		string outputString = "";
 
-		for (pair<Story, Sprint> pair : storiesToSprints) {
+		for (pair<Story, Sprint> pair : storyToSprint) {
 			Story story = pair.first;
 			Sprint sprint = pair.second;
 
@@ -133,7 +176,7 @@ public:
 	string printSprintRoadmap() {
 		string outputString = "";
 
-		for (pair <Sprint, vector<Story>> pair : sprintsToStories) {
+		for (pair <Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
 			vector<Story> sprintStories = pair.second;
 
@@ -150,13 +193,13 @@ public:
 	}
 
 	void addStoryToSprint(Story story, Sprint sprint) {
-		storiesToSprints[story] = sprint;
-		sprintsToStories[sprint].push_back(story);
+		storyToSprint[story] = sprint;
+		sprintToStories[sprint].push_back(story);
 	}
 
 	void removeStoryFromSprint(Story story, Sprint sprint) {
-		storiesToSprints.erase(storiesToSprints.find(story));
-		sprintsToStories[sprint].erase(remove(sprintsToStories[sprint].begin(), sprintsToStories[sprint].end(), story), sprintsToStories[sprint].end());
+		storyToSprint.erase(storyToSprint.find(story));
+		sprintToStories[sprint].erase(remove(sprintToStories[sprint].begin(), sprintToStories[sprint].end(), story), sprintToStories[sprint].end());
 	}
 
 	void moveStory(Story story, Sprint from, Sprint to) {
@@ -167,31 +210,35 @@ public:
 	int calculateValue() {
 		int totalValue = 0;
 
-		for (pair<Story, Sprint> pair : storiesToSprints) {
+		for (pair<Story, Sprint> pair : storyToSprint) {
 			Story story = pair.first;
 			Sprint sprint = pair.second;
 
-			totalValue += story.businessValue * sprint.sprintBonus;
+			if (sprint.sprintNumber != -1) // Don't add value from unassigned sprints
+				totalValue += story.businessValue * sprint.sprintBonus;
 		}
 
 		return totalValue;
 	}
 
 	bool sprintCapacitiesSatisifed() {
-		for (pair<Sprint, vector<Story>> pair : sprintsToStories) {
+		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
-			vector<Story> sprintStories = pair.second;
 
-			// Sum up the story points of all the stories assigned to the sprint
-			int assignedStoryPoints = 0;
-			for (Story story : sprintStories) {
-				assignedStoryPoints += story.storyPoints;
+			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
+				vector<Story> sprintStories = pair.second;
+
+				// Sum up the story points of all the stories assigned to the sprint
+				int assignedStoryPoints = 0;
+				for (Story story : sprintStories) {
+					assignedStoryPoints += story.storyPoints;
+				}
+
+				// Check if the sprint is overloaded
+				if (!sprint.withinCapacity(assignedStoryPoints))
+					// The story points assigned are not within the sprint's capacity
+					return false;
 			}
-
-			// Check if the sprint is overloaded
-			if (!sprint.withinCapacity(assignedStoryPoints))
-				// The story points assigned are not within the sprint's capacity
-				return false;
 		}
 
 		// All sprints are within capacity
@@ -199,22 +246,27 @@ public:
 	}
 
 	bool storyDependenciesSatisfied() {
-		for (pair<Story, Sprint> assignment : storiesToSprints) {
+		for (pair<Story, Sprint> assignment : storyToSprint) {
 			Story story = assignment.first;
 			Sprint assignedSprint = assignment.second;
 
-			for (Story dependee : story.dependencies) {
-				// Only stories that are assigned to a sprint are in the map
-				if (storiesToSprints.find(dependee) == storiesToSprints.end()) {
-					// The dependee isn't assigned to a sprint
-					return false;
-				} else {
-					Sprint dependeeAssignedSprint = storiesToSprints[dependee];
+			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
+				for (Story dependee : story.dependencies) {
+					Sprint dependeeAssignedSprint = storyToSprint[dependee];
 
-					// Check where the story is assigned compared to its dependee
-					if (assignedSprint <= dependeeAssignedSprint)
-						// The story is assigned to an earlier sprint than its dependee
+					// Only stories that are assigned to a sprint are in the map
+					if (storyToSprint.find(dependee) == storyToSprint.end()) {
+						// The dependee isn't assigned to a sprint
 						return false;
+					} else if (dependeeAssignedSprint.sprintNumber == -1) {
+						// The dependee is assigned to the special 'unassigned' sprint
+						return false;
+					} else {
+						// Check where the story is assigned compared to its dependee
+						if (assignedSprint <= dependeeAssignedSprint)
+							// The story is assigned to an earlier sprint than its dependee
+							return false;
+					}
 				}
 			}
 		}
@@ -230,20 +282,23 @@ public:
 	int numberOfSprintCapacitiesViolated() {
 		int counter = 0;
 
-		for (pair<Sprint, vector<Story>> pair : sprintsToStories) {
+		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
-			vector<Story> sprintStories = pair.second;
 
-			// Sum up the story points of all the stories assigned to the sprint
-			int assignedStoryPoints = 0;
-			for (Story story : sprintStories) {
-				assignedStoryPoints += story.storyPoints;
+			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
+				vector<Story> sprintStories = pair.second;
+
+				// Sum up the story points of all the stories assigned to the sprint
+				int assignedStoryPoints = 0;
+				for (Story story : sprintStories) {
+					assignedStoryPoints += story.storyPoints;
+				}
+
+				// Check if the sprint is overloaded
+				if (!sprint.withinCapacity(assignedStoryPoints))
+					// The story points assigned are not within the sprint's capacity
+					counter += 1;;
 			}
-
-			// Check if the sprint is overloaded
-			if (!sprint.withinCapacity(assignedStoryPoints))
-				// The story points assigned are not within the sprint's capacity
-				counter += 1;
 		}
 
 		// All sprints are within capacity
@@ -253,23 +308,29 @@ public:
 	int numberOfStoryDependenciesViolated() {
 		int counter = 0;
 
-		for (pair<Story, Sprint> assignment : storiesToSprints) {
+		for (pair<Story, Sprint> assignment : storyToSprint) {
 			Story story = assignment.first;
 			Sprint assignedSprint = assignment.second;
 
-			for (Story dependee : story.dependencies) {
-				// Only stories that are assigned to a sprint are in the map
-				if (storiesToSprints.find(dependee) == storiesToSprints.end()) {
-					// The dependee isn't assigned to a sprint
-					counter += 1;
-				}
-				else {
-					Sprint dependeeAssignedSprint = storiesToSprints[dependee];
-
-					// Check where the story is assigned compared to its dependee
-					if (assignedSprint <= dependeeAssignedSprint)
-						// The story is assigned to an earlier sprint than its dependee
+			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
+				for (Story dependee : story.dependencies) {
+					// Only stories that are assigned to a sprint are in the map
+					if (storyToSprint.find(dependee) == storyToSprint.end()) {
+						// The dependee isn't assigned to a sprint
 						counter += 1;
+					}
+					else if (dependee.storyNumber == -1) {
+						// The dependee is assigned to the special 'unassigned' sprint
+						counter += 1;
+					}
+					else {
+						Sprint dependeeAssignedSprint = storyToSprint[dependee];
+
+						// Check where the story is assigned compared to its dependee
+						if (assignedSprint <= dependeeAssignedSprint)
+							// The story is assigned to an earlier sprint than its dependee
+							counter += 1;
+					}
 				}
 			}
 		}
@@ -449,14 +510,28 @@ int main(int argc, char* argv[]) {
 	// Holds the data about each user story
 	vector<Story> storyData;
 
+	int numberOfEpics;
+	vector<Epic> epicData;
+
 	switch (argc) {
-	case 3:
-		numberOfSprints = stoi(argv[1]);
-		numberOfStories = stoi(argv[2]);
+	case 4:
+		numberOfStories = stoi(argv[1]);
+		numberOfEpics = stoi(argv[2]);
+		numberOfSprints = stoi(argv[3]);
 
 		// Generate some test data to optimise
 		storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
+
 		sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
+		sprintData.push_back(Sprint(-1, 0, 0)); // A special sprint representing 'unassigned'
+
+		for (int i = 0; i < numberOfEpics; ++i) {
+			epicData.push_back(Epic(i));
+		}
+
+		for (Story story : storyData) {
+			epicData[randomInt(0, epicData.size() - 1)].stories.push_back(story);
+		}
 
 		break;
 	default:
@@ -481,19 +556,27 @@ int main(int argc, char* argv[]) {
 		break;
 	}
 
+	cout << "Stories:" << endl << endl;
+
 	for (Story story : storyData) {
 		cout << story.toString() << endl;
 	}
 
 	cout << endl;
 
-	for (Sprint sprint : sprintData) {
-		cout << sprint.toString() << endl;
+	cout << "Epics:" << endl << endl;
+
+	for (Epic epic : epicData) {
+		cout << epic.toString() << endl;
 	}
 
 	cout << endl;
-	cout << "----------------------------------------------------------------" << endl;
-	cout << endl;
+
+	cout << "Sprints:" << endl << endl;
+
+	for (Sprint sprint : sprintData) {
+		cout << sprint.toString() << endl;
+	}
 
 	// Generate a complete (but possibly infeasible) roadmap by assigning stories to random sprints
 	Roadmap randomRoadmap(storyData, sprintData);
@@ -503,7 +586,17 @@ int main(int argc, char* argv[]) {
 		randomRoadmap.addStoryToSprint(story, randomSprint);
 	}
 
+	cout << endl;
+	cout << "----------------------------------------------------------------" << endl;
+	cout << endl;
+
 	cout << randomRoadmap.printSprintRoadmap() << endl;
+
+	cout << endl;
+	cout << "----------------------------------------------------------------" << endl;
+	cout << endl;
+
+	cout << randomRoadmap.printStoryRoadmap() << endl;
 
 	cout << endl;
 	cout << "----------------------------------------------------------------" << endl;
