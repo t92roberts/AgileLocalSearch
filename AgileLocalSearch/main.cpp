@@ -4,9 +4,7 @@
 #include <map>
 #include <algorithm>
 #include <time.h>
-#include <queue>
 #include <math.h>
-#include <utility>
 
 using namespace std;
 
@@ -151,7 +149,7 @@ public:
 class CompareSprintUtilisation {
 public:
 	bool operator()(pair<Sprint, double> const& a, pair<Sprint, double> const& b) {
-		return a.second < b.second;
+		return a.second > b.second;
 	}
 };
 
@@ -182,8 +180,8 @@ public:
 		return assignedStoryPoints;
 	}
 
-	priority_queue<pair<Sprint, double>, vector<pair<Sprint, double>>, CompareSprintUtilisation> sprintUtilisation() {
-		priority_queue<pair<Sprint, double>, vector<pair<Sprint, double>>, CompareSprintUtilisation> sprintUtilisations;
+	vector<pair<Sprint, double>> sprintUtilisation() {
+		vector<pair<Sprint, double>> sprintUtilisations;
 
 		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
@@ -192,7 +190,7 @@ public:
 				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
 				double utilisation = (double)assignedStoryPoints / (double)sprint.sprintCapacity;
 
-				sprintUtilisations.push(make_pair(sprint, utilisation));
+				sprintUtilisations.push_back(make_pair(sprint, utilisation));
 			}
 		}
 
@@ -534,16 +532,15 @@ public:
 		// The absolute number of stories to destroy (always at least 1)
 		int storiesToDestroy = max(1, (int)round(degreeOfDestruction * completeSolution.stories.size()));
 
-		// A priority queue of sprints ordered by how utilised they are
-		priority_queue<pair<Sprint, double>, vector<pair<Sprint, double>>, CompareSprintUtilisation> sprintUtilisations = completeSolution.sprintUtilisation();
+		// A vector of sprints ordered by how utilised they are
+		vector<pair<Sprint, double>> sprintUtilisations = completeSolution.sprintUtilisation();
+		sort(sprintUtilisations.begin(), sprintUtilisations.end(), CompareSprintUtilisation());
 
-		while (sprintUtilisations.size() > 0) {
-			Sprint sprint = sprintUtilisations.top().first;
-			double utilisation = sprintUtilisations.top().second;
+		for (pair<Sprint, double> pair : sprintUtilisations) {
+			Sprint sprint = pair.first;
+			double utilisation = pair.second;
 
 			cout << "Sprint " << sprint.sprintNumber << " utilised " << 100. * utilisation << "%" << endl;
-
-			sprintUtilisations.pop();
 		}
 
 		// IMPLEMENT
