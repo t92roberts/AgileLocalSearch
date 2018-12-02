@@ -146,9 +146,16 @@ public:
 	}
 };
 
-class CompareSprintUtilisation {
+class SprintDoublePairDescending {
 public:
 	bool operator()(pair<Sprint, double> const& a, pair<Sprint, double> const& b) {
+		return a.second > b.second;
+	}
+};
+
+class StoryDoublePairDescending {
+public:
+	bool operator()(pair<Story, double> const& a, pair<Story, double> const& b) {
 		return a.second > b.second;
 	}
 };
@@ -180,7 +187,7 @@ public:
 		return assignedStoryPoints;
 	}
 
-	vector<pair<Sprint, double>> sprintUtilisation() {
+	vector<pair<Sprint, double>> sprintUtilisations() {
 		vector<pair<Sprint, double>> sprintUtilisations;
 
 		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
@@ -194,7 +201,54 @@ public:
 			}
 		}
 
+		sort(sprintUtilisations.begin(), sprintUtilisations.end(), SprintDoublePairDescending());
 		return sprintUtilisations;
+	}
+
+	vector<pair<Story, double>> storyDependenciesViolated() {
+		vector<pair<Story, double>> storyDependenciesViolated;
+
+		for (pair<Story, Sprint> assignment : storyToSprint) {
+			Story story = assignment.first;
+			Sprint assignedSprint = assignment.second;
+
+			int dependenciesUnassigned = 0;
+
+			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
+				for (Story dependee : story.dependencies) {
+					Sprint dependeeAssignedSprint = storyToSprint[dependee];
+
+					// Only stories that are assigned to a sprint are in the map
+					if (storyToSprint.find(dependee) == storyToSprint.end()) {
+						// The dependee isn't assigned to a sprint
+						dependenciesUnassigned += 1;
+					}
+					else if (dependeeAssignedSprint.sprintNumber == -1) {
+						// The dependee is assigned to the special 'unassigned' sprint
+						dependenciesUnassigned += 1;
+					}
+					else {
+						// Check where the story is assigned compared to its dependee
+						if (assignedSprint <= dependeeAssignedSprint)
+							// The story is assigned to an earlier sprint than its dependee
+							dependenciesUnassigned += 1;
+					}
+				}
+			}
+
+			double percentUnassigned;
+
+			// If a story has no dependencies, then it has no unassigned dependencies
+			if (story.dependencies.size() == 0)
+				percentUnassigned = 0;
+			else
+				percentUnassigned = (double)dependenciesUnassigned / (double)story.dependencies.size();
+
+			storyDependenciesViolated.push_back(make_pair(story, percentUnassigned));
+		}
+
+		sort(storyDependenciesViolated.begin(), storyDependenciesViolated.end(), StoryDoublePairDescending());
+		return storyDependenciesViolated;
 	}
 
 	void addStoryToSprint(Story story, Sprint sprint) {
@@ -532,15 +586,24 @@ public:
 		// The absolute number of stories to destroy (always at least 1)
 		int storiesToDestroy = max(1, (int)round(degreeOfDestruction * completeSolution.stories.size()));
 
-		// A vector of sprints ordered by how utilised they are
-		vector<pair<Sprint, double>> sprintUtilisations = completeSolution.sprintUtilisation();
-		sort(sprintUtilisations.begin(), sprintUtilisations.end(), CompareSprintUtilisation());
-
+		// A vector of sprints sorted by how utilised they are (as a percentage)
+		vector<pair<Sprint, double>> sprintUtilisations = completeSolution.sprintUtilisations();
+		
 		for (pair<Sprint, double> pair : sprintUtilisations) {
 			Sprint sprint = pair.first;
 			double utilisation = pair.second;
 
 			cout << "Sprint " << sprint.sprintNumber << " utilised " << 100. * utilisation << "%" << endl;
+		}
+
+		// A vector of stories sorted by the % of each story's dependencies are unassigned
+		vector<pair<Story, double>> storyDependenciesViolated = completeSolution.storyDependenciesViolated();
+
+		for (pair<Story, double> pair : storyDependenciesViolated) {
+			Story story = pair.first;
+			double unassignedDependencies = pair.second;
+
+			cout << "Story " << story.storyNumber << " unassigned dependencies " << 100. * unassignedDependencies << "%" << endl;
 		}
 
 		// IMPLEMENT
