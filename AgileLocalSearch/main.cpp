@@ -297,7 +297,7 @@ public:
 				// Check if the sprint is overloaded
 				if (!sprint.withinCapacity(assignedStoryPoints))
 					// The story points assigned are not within the sprint's capacity
-					counter += 1;;
+					counter += 1;
 			}
 		}
 
@@ -314,18 +314,18 @@ public:
 
 			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
 				for (Story dependee : story.dependencies) {
+					Sprint dependeeAssignedSprint = storyToSprint[dependee];
+
 					// Only stories that are assigned to a sprint are in the map
 					if (storyToSprint.find(dependee) == storyToSprint.end()) {
 						// The dependee isn't assigned to a sprint
 						counter += 1;
 					}
-					else if (dependee.storyNumber == -1) {
+					else if (dependeeAssignedSprint.sprintNumber == -1) {
 						// The dependee is assigned to the special 'unassigned' sprint
 						counter += 1;
 					}
 					else {
-						Sprint dependeeAssignedSprint = storyToSprint[dependee];
-
 						// Check where the story is assigned compared to its dependee
 						if (assignedSprint <= dependeeAssignedSprint)
 							// The story is assigned to an earlier sprint than its dependee
@@ -493,6 +493,47 @@ vector<Sprint> randomlyGenerateSprints(int numberOfSprints, int minCapacity, int
 	return sprintData;
 }
 
+class LNS {
+public:
+	LNS() {};
+
+	static Roadmap destroy(Roadmap completeSolution) {
+		// IMPLEMENT
+		return completeSolution;
+	}
+
+	static Roadmap repair(Roadmap incompleteSolution) {
+		// IMPLEMENT
+		return incompleteSolution;
+	}
+
+	static bool accept(Roadmap repairedSolution, Roadmap currentSolution) {
+		// IMPLEMENT (replace this hill-climbing)
+		return repairedSolution.calculateValue() > currentSolution.calculateValue();
+	}
+
+	static Roadmap run(int numberOfIterations, Roadmap currentSolution) {
+		// TODO
+		// - Better stopping condition than # of iterations
+
+		Roadmap bestSolution = currentSolution;
+
+		for (int i = 0; i < numberOfIterations; ++i) {
+			Roadmap newSolution = repair(destroy(currentSolution));
+
+			if (accept(newSolution, currentSolution)) {
+				currentSolution = newSolution;
+			}
+
+			if (newSolution.calculateValue() > bestSolution.calculateValue()) { // Maximisation
+				bestSolution = newSolution;
+			}
+		}
+
+		return bestSolution;
+	}
+};
+
 int main(int argc, char* argv[]) {
 	// Seed the random number generator
 	srand(time(NULL));
@@ -556,6 +597,23 @@ int main(int argc, char* argv[]) {
 		break;
 	}
 
+	// Generate a complete, feasible roadmap by assigning every story to a random sprint
+	Roadmap randomRoadmap;
+
+	do {
+		randomRoadmap = Roadmap(storyData, sprintData);
+
+		for (Story story : storyData) {
+			Sprint randomSprint = sprintData[randomInt(0, sprintData.size() - 1)];
+			randomRoadmap.addStoryToSprint(story, randomSprint);
+		}
+	} while (!randomRoadmap.isFeasible());
+
+	Roadmap bestSolution = LNS::run(10, randomRoadmap);
+
+	// Pretty printing ///////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////
+
 	cout << "Stories:" << endl << endl;
 
 	for (Story story : storyData) {
@@ -578,25 +636,11 @@ int main(int argc, char* argv[]) {
 		cout << sprint.toString() << endl;
 	}
 
-	// Generate a complete (but possibly infeasible) roadmap by assigning stories to random sprints
-	Roadmap randomRoadmap(storyData, sprintData);
-
-	for (Story story : storyData) {
-		Sprint randomSprint = sprintData[randomInt(0, sprintData.size() - 1)];
-		randomRoadmap.addStoryToSprint(story, randomSprint);
-	}
-
 	cout << endl;
 	cout << "----------------------------------------------------------------" << endl;
 	cout << endl;
 
 	cout << randomRoadmap.printSprintRoadmap() << endl;
-
-	cout << endl;
-	cout << "----------------------------------------------------------------" << endl;
-	cout << endl;
-
-	cout << randomRoadmap.printStoryRoadmap() << endl;
 
 	cout << endl;
 	cout << "----------------------------------------------------------------" << endl;
