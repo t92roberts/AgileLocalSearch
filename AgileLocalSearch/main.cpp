@@ -4,6 +4,9 @@
 #include <map>
 #include <algorithm>
 #include <time.h>
+#include <queue>
+#include <math.h>
+#include <utility>
 
 using namespace std;
 
@@ -145,6 +148,13 @@ public:
 	}
 };
 
+class CompareSprintUtilisation {
+public:
+	bool operator()(pair<Sprint, double> const& a, pair<Sprint, double> const& b) {
+		return a.second < b.second;
+	}
+};
+
 class Roadmap {
 public:
 	vector<Story> stories;
@@ -160,36 +170,33 @@ public:
 		this->sprints = sprints;
 	}
 
-	string printStoryRoadmap() {
-		string outputString = "";
+	int storyPointsAssignedToSprint(Sprint sprint) {
+		vector<Story> sprintStories = sprintToStories[sprint];
 
-		for (pair<Story, Sprint> pair : storyToSprint) {
-			Story story = pair.first;
-			Sprint sprint = pair.second;
-
-			outputString += story.toString() + "\n  >> " + sprint.toString() + "\n";
+		// Sum up the story points of all the stories assigned to the sprint
+		int assignedStoryPoints = 0;
+		for (Story story : sprintStories) {
+			assignedStoryPoints += story.storyPoints;
 		}
 
-		return outputString;
+		return assignedStoryPoints;
 	}
 
-	string printSprintRoadmap() {
-		string outputString = "";
+	priority_queue<pair<Sprint, double>, vector<pair<Sprint, double>>, CompareSprintUtilisation> sprintUtilisation() {
+		priority_queue<pair<Sprint, double>, vector<pair<Sprint, double>>, CompareSprintUtilisation> sprintUtilisations;
 
-		for (pair <Sprint, vector<Story>> pair : sprintToStories) {
+		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
-			vector<Story> sprintStories = pair.second;
 
-			outputString += sprint.toString();
+			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
+				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
+				double utilisation = (double)assignedStoryPoints / (double)sprint.sprintCapacity;
 
-			for (Story story : sprintStories) {
-				outputString += "\n  >> " + story.toString();
+				sprintUtilisations.push(make_pair(sprint, utilisation));
 			}
-
-			outputString += "\n\n";
 		}
 
-		return outputString;
+		return sprintUtilisations;
 	}
 
 	void addStoryToSprint(Story story, Sprint sprint) {
@@ -226,13 +233,7 @@ public:
 			Sprint sprint = pair.first;
 
 			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
-				vector<Story> sprintStories = pair.second;
-
-				// Sum up the story points of all the stories assigned to the sprint
-				int assignedStoryPoints = 0;
-				for (Story story : sprintStories) {
-					assignedStoryPoints += story.storyPoints;
-				}
+				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
 
 				// Check if the sprint is overloaded
 				if (!sprint.withinCapacity(assignedStoryPoints))
@@ -286,13 +287,7 @@ public:
 			Sprint sprint = pair.first;
 
 			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
-				vector<Story> sprintStories = pair.second;
-
-				// Sum up the story points of all the stories assigned to the sprint
-				int assignedStoryPoints = 0;
-				for (Story story : sprintStories) {
-					assignedStoryPoints += story.storyPoints;
-				}
+				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
 
 				// Check if the sprint is overloaded
 				if (!sprint.withinCapacity(assignedStoryPoints))
@@ -337,6 +332,40 @@ public:
 
 		// All stories have their dependees assigned to an earlier sprint
 		return counter;
+	}
+
+
+
+	string printStoryRoadmap() {
+		string outputString = "";
+
+		for (pair<Story, Sprint> pair : storyToSprint) {
+			Story story = pair.first;
+			Sprint sprint = pair.second;
+
+			outputString += story.toString() + "\n  >> " + sprint.toString() + "\n";
+		}
+
+		return outputString;
+	}
+
+	string printSprintRoadmap() {
+		string outputString = "";
+
+		for (pair <Sprint, vector<Story>> pair : sprintToStories) {
+			Sprint sprint = pair.first;
+			vector<Story> sprintStories = pair.second;
+
+			outputString += sprint.toString();
+
+			for (Story story : sprintStories) {
+				outputString += "\n  >> " + story.toString();
+			}
+
+			outputString += "\n\n";
+		}
+
+		return outputString;
 	}
 };
 
@@ -497,36 +526,73 @@ class LNS {
 public:
 	LNS() {};
 
+	// Return a copy of a complete solution that has been partly destroyed
 	static Roadmap destroy(Roadmap completeSolution) {
+		// The percentage of stories to destroy
+		double degreeOfDestruction = 0.15;
+
+		// The absolute number of stories to destroy (always at least 1)
+		int storiesToDestroy = max(1, (int)round(degreeOfDestruction * completeSolution.stories.size()));
+
+		// A priority queue of sprints ordered by how utilised they are
+		priority_queue<pair<Sprint, double>, vector<pair<Sprint, double>>, CompareSprintUtilisation> sprintUtilisations = completeSolution.sprintUtilisation();
+
+		while (sprintUtilisations.size() > 0) {
+			Sprint sprint = sprintUtilisations.top().first;
+			double utilisation = sprintUtilisations.top().second;
+
+			cout << "Sprint " << sprint.sprintNumber << " utilised " << 100. * utilisation << "%" << endl;
+
+			sprintUtilisations.pop();
+		}
+
 		// IMPLEMENT
 		return completeSolution;
 	}
 
+	// Repair a partly destroyed solution to a complete solution
 	static Roadmap repair(Roadmap incompleteSolution) {
-		// IMPLEMENT
+		// TODO
+		// - Use CPLEX to find the optimal way to repair the partly-destroyed solution?
 		return incompleteSolution;
 	}
 
-	static bool accept(Roadmap repairedSolution, Roadmap currentSolution) {
+	// Returns whether the temporary solution should become the new current solution
+	static bool accept(Roadmap temporarySolution, Roadmap currentSolution) {
 		// IMPLEMENT (replace this hill-climbing)
-		return repairedSolution.calculateValue() > currentSolution.calculateValue();
+		return temporarySolution.calculateValue() > currentSolution.calculateValue();
 	}
 
-	static Roadmap run(int numberOfIterations, Roadmap currentSolution) {
+	static Roadmap run(Roadmap currentSolution) {
 		// TODO
-		// - Better stopping condition than # of iterations
+		// - Use a better stopping condition than n iterations (less than a threshold of improvement in the past n iterations, timer etc)
+		// - Only take a feasible, complete solution to remove some of the 'best solution' checks below
 
-		Roadmap bestSolution = currentSolution;
+		// The best solution visited so far
+		Roadmap bestSolution;
 
-		for (int i = 0; i < numberOfIterations; ++i) {
-			Roadmap newSolution = repair(destroy(currentSolution));
+		// Whether a complete, feasible solution has been visited yet
+		bool haveSeenAFeasibleSolution = currentSolution.isFeasible();
+		
+		// The initial solution might be infeasible
+		if(currentSolution.isFeasible())
+			bestSolution = currentSolution;
 
-			if (accept(newSolution, currentSolution)) {
-				currentSolution = newSolution;
+		for (int i = 0; i < 1; ++i) {
+			Roadmap temporarySolution = repair(destroy(currentSolution));
+
+			if (accept(temporarySolution, currentSolution)) {
+				currentSolution = temporarySolution;
 			}
 
-			if (newSolution.calculateValue() > bestSolution.calculateValue()) { // Maximisation
-				bestSolution = newSolution;
+			if (!haveSeenAFeasibleSolution && temporarySolution.isFeasible()) {
+				// The temporary solution is the first complete, feasible solution visited
+				haveSeenAFeasibleSolution = true;
+				bestSolution = temporarySolution;
+			} else {
+				if (temporarySolution.calculateValue() > bestSolution.calculateValue()) { // Maximisation
+					bestSolution = temporarySolution;
+				}
 			}
 		}
 
@@ -539,7 +605,7 @@ int main(int argc, char* argv[]) {
 	srand(time(NULL));
 
 	// The number of full time employees able to work on tasks (to estimate the sprint velocity)
-	int numberOfFTEs = 5;
+	int numberOfFTEs = 1;
 
 	// The number of sprints available in the roadmap
 	int numberOfSprints;
@@ -597,19 +663,21 @@ int main(int argc, char* argv[]) {
 		break;
 	}
 
-	// Generate a complete, feasible roadmap by assigning every story to a random sprint
-	Roadmap randomRoadmap;
+	// Local search //////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////
 
-	do {
-		randomRoadmap = Roadmap(storyData, sprintData);
+	// TODO
+	// - Use CPLEX to find an intial feasible, complete solution?
+	
+	// Generate a complete (possibly infeasible) roadmap by assigning every story to a random sprint
+	Roadmap randomRoadmap  = Roadmap(storyData, sprintData);
 
-		for (Story story : storyData) {
-			Sprint randomSprint = sprintData[randomInt(0, sprintData.size() - 1)];
-			randomRoadmap.addStoryToSprint(story, randomSprint);
-		}
-	} while (!randomRoadmap.isFeasible());
+	for (Story story : storyData) {
+		Sprint randomSprint = sprintData[randomInt(0, sprintData.size() - 1)];
+		randomRoadmap.addStoryToSprint(story, randomSprint);
+	}
 
-	Roadmap bestSolution = LNS::run(10, randomRoadmap);
+	Roadmap bestSolution = LNS::run(randomRoadmap);
 
 	// Pretty printing ///////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
