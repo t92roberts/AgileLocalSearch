@@ -5,8 +5,13 @@
 #include <algorithm>
 #include <time.h>
 #include <math.h>
+#include <chrono>
+#include <random>
 
 using namespace std;
+
+unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+std::default_random_engine generator(seed);
 
 class Story {
 public:
@@ -386,8 +391,6 @@ public:
 		return counter;
 	}
 
-
-
 	string printStoryRoadmap() {
 		string outputString = "";
 
@@ -404,14 +407,20 @@ public:
 	string printSprintRoadmap() {
 		string outputString = "";
 
-		for (pair <Sprint, vector<Story>> pair : sprintToStories) {
-			Sprint sprint = pair.first;
-			vector<Story> sprintStories = pair.second;
+		for (Sprint sprint : sprints) {
+			if (sprint.sprintNumber == -1)
+				outputString += "Unassigned";
+			else
+				outputString += sprint.toString();
 
-			outputString += sprint.toString();
+			vector<Story> sprintStories = sprintToStories[sprint];
 
-			for (Story story : sprintStories) {
-				outputString += "\n  >> " + story.toString();
+			if (sprintStories.empty()) {
+				outputString += "\n  >> None";
+			} else {
+				for (Story story : sprintStories) {
+					outputString += "\n  >> " + story.toString();
+				}
 			}
 
 			outputString += "\n\n";
@@ -420,11 +429,6 @@ public:
 		return outputString;
 	}
 };
-
-// Returns a random int between min and max (both inclusive) using a uniform distribution
-int randomInt(int min, int max) {
-	return rand() % (max - min + 1) + min;
-}
 
 // Returns a random position in the input vector according to the given probability distribution of getting each position
 int randomIntDiscreteDistribution(vector<double> probabilities) {
@@ -515,13 +519,18 @@ vector<Story> randomlyGenerateStories(int numberOfStories, int minBusinessValue,
 	// Geometric sequence of probabilities for the discrete distribution random number generator
 	vector<double> probabilities = geometricSequence(0.5, 0.5, (double)numberOfStories);
 
+	uniform_int_distribution<int> bvDistribution(minBusinessValue, maxBusinessValue);
+	uniform_int_distribution<int> spDistribution(minStoryPoints, maxStoryPoints);
+
 	// Create stories with random values
 	for (int i = 0; i < numberOfStories; ++i) {
-		int businessValue = randomInt(minBusinessValue, maxBusinessValue);
-		int storyPoints = randomInt(minStoryPoints, maxStoryPoints);
+		int businessValue = bvDistribution(generator);
+		int storyPoints = spDistribution(generator);
 
 		storyData.push_back(Story(i, businessValue, storyPoints));
 	}
+
+	uniform_int_distribution<int> dependeeDistribution(0, numberOfStories - 1);
 
 	for (int i = 0; i < numberOfStories; ++i) {
 		// The maximum number of dependencies that story i can have
@@ -530,7 +539,7 @@ vector<Story> randomlyGenerateStories(int numberOfStories, int minBusinessValue,
 
 		for (int j = 0; j < maxNumberOfDependencies; ++j) {
 			// Pick a random story as a potential dependency of story i
-			Story potentialDependee = storyData[randomInt(0, numberOfStories - 1)];
+			Story potentialDependee = storyData[dependeeDistribution(generator)];
 
 			// Check if the dependency is the same as story i
 			bool isSelfLoop = potentialDependee == storyData[i];
@@ -564,8 +573,10 @@ vector<Story> randomlyGenerateStories(int numberOfStories, int minBusinessValue,
 vector<Sprint> randomlyGenerateSprints(int numberOfSprints, int minCapacity, int maxCapacity) {
 	vector<Sprint> sprintData;
 
+	uniform_int_distribution<int> capacityDistribution(minCapacity, maxCapacity);
+
 	for (int i = 0; i < numberOfSprints; ++i) {
-		int capacity = randomInt(minCapacity, maxCapacity);
+		int capacity = capacityDistribution(generator);
 
 		// Sprint(sprintNumber, sprintCapacity, sprintBonus)
 		sprintData.push_back(Sprint(i, capacity, numberOfSprints - i));
@@ -574,85 +585,114 @@ vector<Sprint> randomlyGenerateSprints(int numberOfSprints, int minCapacity, int
 	return sprintData;
 }
 
+// Holds a partly-destroyed solution and a list of the stories that were removed
+class DestroyedSolution {
+public:
+	Roadmap roadmap;
+	vector<Story> removedStories;
+
+	DestroyedSolution() {};
+
+	DestroyedSolution(Roadmap roadmap, vector<Story> removedStories) {
+		this->roadmap = roadmap;
+		this->removedStories = removedStories;
+	}
+};
+
 class LNS {
 public:
 	LNS() {};
 
 	// Return a copy of a complete solution that has been partly destroyed
-	static Roadmap destroy(Roadmap completeSolution) {
+	static DestroyedSolution destroy(Roadmap completeSolution) {
+		// TODO
+		// - Don't randomly choose stories, use heuristics + Tabu list to mitigate cycling
+
 		// The percentage of stories to destroy
 		double degreeOfDestruction = 0.15;
 
-		// The absolute number of stories to destroy (always at least 1)
-		int storiesToDestroy = max(1, (int)round(degreeOfDestruction * completeSolution.stories.size()));
+		// The absolute number of stories to destroy (at least 1)
+		int numberOfStoriesToRemove = max(1, (int)round(degreeOfDestruction * completeSolution.stories.size()));
 
-		// A vector of sprints sorted by how utilised they are (as a percentage)
-		vector<pair<Sprint, double>> sprintUtilisations = completeSolution.sprintUtilisations();
-		
-		for (pair<Sprint, double> pair : sprintUtilisations) {
-			Sprint sprint = pair.first;
-			double utilisation = pair.second;
+		vector<Story> removedStories;
 
-			cout << "Sprint " << sprint.sprintNumber << " utilised " << 100. * utilisation << "%" << endl;
-		}
+		uniform_int_distribution<int> storyDistribution(0, completeSolution.stories.size() - 1);
 
 		// A vector of stories sorted by the % of each story's dependencies are unassigned
-		vector<pair<Story, double>> storyDependenciesViolated = completeSolution.storyDependenciesViolated();
+		//vector<pair<Story, double>> storyDependenciesViolated = completeSolution.storyDependenciesViolated();
 
-		for (pair<Story, double> pair : storyDependenciesViolated) {
-			Story story = pair.first;
-			double unassignedDependencies = pair.second;
+		// A vector of sprints sorted by how utilised they are (as a percentage)
+		//vector<pair<Sprint, double>> sprintUtilisations = completeSolution.sprintUtilisations();
+		
+		while (numberOfStoriesToRemove > 0) {
+			// Remove a random story
+			Story randomStory = completeSolution.stories[storyDistribution(generator)];
+			Sprint assignedSprint = completeSolution.storyToSprint[randomStory];
+			
+			removedStories.push_back(randomStory);
+			completeSolution.removeStoryFromSprint(randomStory, assignedSprint);
 
-			cout << "Story " << story.storyNumber << " unassigned dependencies " << 100. * unassignedDependencies << "%" << endl;
+			--numberOfStoriesToRemove;
+
+			// Remove its dependencies (if it has any, and more stories need to be removed)
+			for (int i = 0; i < randomStory.dependencies.size() && numberOfStoriesToRemove > 0; ++i) {
+				Story dependee = randomStory.dependencies[i];
+				Sprint assignedSprint = completeSolution.storyToSprint[dependee];
+
+				removedStories.push_back(dependee);
+				completeSolution.removeStoryFromSprint(dependee, assignedSprint);
+
+				--numberOfStoriesToRemove;
+			}
 		}
 
-		// IMPLEMENT
-		return completeSolution;
+		return DestroyedSolution(completeSolution, removedStories);
 	}
 
 	// Repair a partly destroyed solution to a complete solution
-	static Roadmap repair(Roadmap incompleteSolution) {
+	static Roadmap repair(DestroyedSolution destroyedSolution) {
 		// TODO
 		// - Use CPLEX to find the optimal way to repair the partly-destroyed solution?
-		return incompleteSolution;
+
+		Roadmap roadmap = destroyedSolution.roadmap;
+		vector<Story> removedStories = destroyedSolution.removedStories;
+
+		uniform_int_distribution<int> sprintDistribution(0, roadmap.sprints.size() - 1);
+
+		// Assign the removed stories to random sprints
+		for (Story story : removedStories) {
+			Sprint randomSprint = roadmap.sprints[sprintDistribution(generator)];
+			roadmap.addStoryToSprint(story, randomSprint);
+		}
+
+		return roadmap;
 	}
 
 	// Returns whether the temporary solution should become the new current solution
 	static bool accept(Roadmap temporarySolution, Roadmap currentSolution) {
-		// IMPLEMENT (replace this hill-climbing)
-		return temporarySolution.calculateValue() > currentSolution.calculateValue();
+		// TODO
+		// - Don't use hill climbing
+		return temporarySolution.calculateValue() >= currentSolution.calculateValue();
 	}
 
-	static Roadmap run(Roadmap currentSolution) {
+	static Roadmap run(Roadmap currentSolution, double seconds) {
 		// TODO
-		// - Use a better stopping condition than n iterations (less than a threshold of improvement in the past n iterations, timer etc)
-		// - Only take a feasible, complete solution to remove some of the 'best solution' checks below
+		// - Within a time limit OR less than a threshold of improvement in the past n iterations
 
 		// The best solution visited so far
-		Roadmap bestSolution;
+		Roadmap bestSolution = currentSolution;
 
-		// Whether a complete, feasible solution has been visited yet
-		bool haveSeenAFeasibleSolution = currentSolution.isFeasible();
-		
-		// The initial solution might be infeasible
-		if(currentSolution.isFeasible())
-			bestSolution = currentSolution;
+		time_t start = time(NULL);
 
-		for (int i = 0; i < 1; ++i) {
+		while (difftime(time(NULL), start) < seconds) {
 			Roadmap temporarySolution = repair(destroy(currentSolution));
 
 			if (accept(temporarySolution, currentSolution)) {
 				currentSolution = temporarySolution;
 			}
 
-			if (!haveSeenAFeasibleSolution && temporarySolution.isFeasible()) {
-				// The temporary solution is the first complete, feasible solution visited
-				haveSeenAFeasibleSolution = true;
+			if (temporarySolution.calculateValue() > bestSolution.calculateValue() && temporarySolution.isFeasible()) { // Maximisation
 				bestSolution = temporarySolution;
-			} else {
-				if (temporarySolution.calculateValue() > bestSolution.calculateValue()) { // Maximisation
-					bestSolution = temporarySolution;
-				}
 			}
 		}
 
@@ -661,11 +701,8 @@ public:
 };
 
 int main(int argc, char* argv[]) {
-	// Seed the random number generator
-	srand(time(NULL));
-
 	// The number of full time employees able to work on tasks (to estimate the sprint velocity)
-	int numberOfFTEs = 1;
+	int numberOfFTEs = 5;
 
 	// The number of sprints available in the roadmap
 	int numberOfSprints;
@@ -677,28 +714,16 @@ int main(int argc, char* argv[]) {
 	// Holds the data about each user story
 	vector<Story> storyData;
 
-	int numberOfEpics;
-	vector<Epic> epicData;
-
 	switch (argc) {
-	case 4:
+	case 3:
 		numberOfStories = stoi(argv[1]);
-		numberOfEpics = stoi(argv[2]);
-		numberOfSprints = stoi(argv[3]);
+		numberOfSprints = stoi(argv[2]);
 
 		// Generate some test data to optimise
 		storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
 
 		sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
 		sprintData.push_back(Sprint(-1, 0, 0)); // A special sprint representing 'unassigned'
-
-		for (int i = 0; i < numberOfEpics; ++i) {
-			epicData.push_back(Epic(i));
-		}
-
-		for (Story story : storyData) {
-			epicData[randomInt(0, epicData.size() - 1)].stories.push_back(story);
-		}
 
 		break;
 	default:
@@ -717,6 +742,7 @@ int main(int argc, char* argv[]) {
 
 		sprintData.push_back(sprint0);
 		sprintData.push_back(sprint1);
+		sprintData.push_back(Sprint(-1, 0, 0)); // A special sprint representing 'unassigned'
 
 		numberOfSprints = sprintData.size();
 
@@ -727,17 +753,25 @@ int main(int argc, char* argv[]) {
 	//////////////////////////////////////////////////////////////////////////
 
 	// TODO
-	// - Use CPLEX to find an intial feasible, complete solution?
+	// - Use CPLEX to find an initial feasible, complete solution?
 	
-	// Generate a complete (possibly infeasible) roadmap by assigning every story to a random sprint
-	Roadmap randomRoadmap  = Roadmap(storyData, sprintData);
+	// A complete, feasible roadmap
+	Roadmap randomRoadmap;
+	
+	// Assign every story to a random sprint until it makes a complete, feasible solution
+	do {
+		randomRoadmap = Roadmap(storyData, sprintData);
 
-	for (Story story : storyData) {
-		Sprint randomSprint = sprintData[randomInt(0, sprintData.size() - 1)];
-		randomRoadmap.addStoryToSprint(story, randomSprint);
-	}
+		uniform_int_distribution<int> sprintDistribution(0, sprintData.size() - 1);
 
-	Roadmap bestSolution = LNS::run(randomRoadmap);
+		for (Story story : storyData) {
+			Sprint randomSprint = sprintData[sprintDistribution(generator)];
+			randomRoadmap.addStoryToSprint(story, randomSprint);
+		}
+	} while (!randomRoadmap.isFeasible());
+
+	double maxRunTimeSeconds = 5;
+	Roadmap bestSolution = LNS::run(randomRoadmap, maxRunTimeSeconds);
 
 	// Pretty printing ///////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
@@ -746,14 +780,6 @@ int main(int argc, char* argv[]) {
 
 	for (Story story : storyData) {
 		cout << story.toString() << endl;
-	}
-
-	cout << endl;
-
-	cout << "Epics:" << endl << endl;
-
-	for (Epic epic : epicData) {
-		cout << epic.toString() << endl;
 	}
 
 	cout << endl;
@@ -768,15 +794,15 @@ int main(int argc, char* argv[]) {
 	cout << "----------------------------------------------------------------" << endl;
 	cout << endl;
 
-	cout << randomRoadmap.printSprintRoadmap() << endl;
+	cout << bestSolution.printSprintRoadmap() << endl;
 
 	cout << endl;
 	cout << "----------------------------------------------------------------" << endl;
 	cout << endl;
 
-	cout << "Roadmap value: " << randomRoadmap.calculateValue() << endl << endl;
+	cout << "Roadmap value: " << bestSolution.calculateValue() << endl << endl;
 
-	cout << "Is feasible: " << boolalpha << randomRoadmap.isFeasible() << endl;
-	cout << "(" << randomRoadmap.numberOfSprintCapacitiesViolated() << " sprint capacities exceeded)" << endl;
-	cout << "(" << randomRoadmap.numberOfStoryDependenciesViolated() << " story dependencies unassigned)" << endl;
+	cout << "Is feasible: " << boolalpha << bestSolution.isFeasible() << endl;
+	cout << "(" << bestSolution.numberOfSprintCapacitiesViolated() << " sprint capacities exceeded)" << endl;
+	cout << "(" << bestSolution.numberOfStoryDependenciesViolated() << " story dependencies unassigned)" << endl;
 }
