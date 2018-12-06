@@ -3,7 +3,7 @@
 #include <string>
 #include <map>
 #include <algorithm>
-#include <time.h>
+#include <chrono>
 #include <math.h>
 #include <random>
 
@@ -190,6 +190,40 @@ public:
 				storyToEpic[story] = epic;
 			}
 		}
+	}
+
+	bool validInsert(Story story, Sprint sprint) {
+		// It's always valid to add a story to the 'unassigned' sprint
+		if (sprint.sprintNumber == -1)
+			return true;
+
+		// Check if adding the story to the sprint overloads the sprint
+		if ((story.storyPoints + storyPointsAssignedToSprint(sprint)) > sprint.sprintCapacity)
+			return false;
+
+		// Check that each of the story's dependencies are assigned before the sprint
+		for (Story dependee : story.dependencies) {
+			// Only stories that are assigned to a sprint are in the map
+			if (storyToSprint.find(dependee) == storyToSprint.end()) {
+				// The dependee isn't assigned to a sprint
+				return false;
+			}
+
+			Sprint dependeeAssignedSprint = storyToSprint[dependee];
+			
+			if (dependeeAssignedSprint.sprintNumber == -1) {
+				// The dependee is assigned to the special 'unassigned' sprint
+				return false;
+			}
+			
+			if (sprint.sprintNumber <= dependeeAssignedSprint.sprintNumber) {
+				// The story is assigned to an earlier sprint than its dependee
+				return false;
+			}
+		}
+
+		// The sprint doesn't get overloaded and the story's dependencies are satisfied
+		return true;
 	}
 
 	int storyPointsAssignedToSprint(Sprint sprint) {
@@ -426,14 +460,21 @@ public:
 				outputString += sprint.toString();
 
 			vector<Story> sprintStories = sprintToStories[sprint];
+			int valueDelivered = 0;
+			int storyPointsAssigned = 0;
 
 			if (sprintStories.empty()) {
 				outputString += "\n  >> None";
 			} else {
 				for (Story story : sprintStories) {
+					valueDelivered += story.businessValue;
+					storyPointsAssigned += story.storyPoints;
+
 					outputString += "\n  >> " + story.toString();
 				}
 			}
+
+			outputString += "\nValue: " + to_string(valueDelivered) + " (weighted value: " + to_string(valueDelivered * sprint.sprintBonus) + "), story points: " + to_string(storyPointsAssigned);
 
 			outputString += "\n\n";
 		}
@@ -615,8 +656,34 @@ class LNS {
 public:
 	LNS() {};
 
-	// Return a copy of a complete solution that has been partly destroyed
-	static DestroyedSolution destroy(Roadmap completeSolution, double degreeOfDestruction) {
+	// Randomly selects stories to remove
+	static DestroyedSolution randomRuin(Roadmap completeSolution, double degreeOfDestruction) {
+		// TODO
+		// - Take a Tabu list as an input (to mitigate cycling)
+
+		// The absolute number of stories to destroy (at least 1)
+		int numberOfStoriesToRemove = max(1, (int)round(degreeOfDestruction * completeSolution.stories.size()));
+
+		uniform_int_distribution<int> storyDistribution(0, completeSolution.stories.size() - 1);
+
+		// A list of the stories removed from the solution
+		vector<Story> removedStories;
+
+		// Keep removing stories until the required number have been removed
+		for (; numberOfStoriesToRemove > 0; --numberOfStoriesToRemove) {
+			// Remove a random story
+			Story randomStory = completeSolution.stories[storyDistribution(generator)];
+			Sprint randomStorySprint = completeSolution.storyToSprint[randomStory];
+
+			removedStories.push_back(randomStory);
+			completeSolution.removeStoryFromSprint(randomStory, randomStorySprint);
+		}
+
+		return DestroyedSolution(completeSolution, removedStories);
+	}
+
+	// Removes random stories and their related stories
+	static DestroyedSolution radialRuin(Roadmap completeSolution, double degreeOfDestruction) {
 		// TODO
 		// - Take a Tabu list as an input (to mitigate cycling)
 
@@ -676,23 +743,39 @@ public:
 		return DestroyedSolution(completeSolution, removedStories);
 	}
 
+	static Roadmap randomGreedyInsertStories(vector<Story> storiesToInsert, Roadmap roadmap) {
+		// TODO
+		// - Insert the stories by business value ascending, story points ascending
+		while (storiesToInsert.size() > 0) {
+			uniform_int_distribution<int> storyDistribution(0, storiesToInsert.size() - 1);
+			Story randomStory = storiesToInsert[storyDistribution(generator)];
+
+			// Greedily re-insert it into a sprint
+			for (Sprint sprint : roadmap.sprints) {
+				if (sprint.sprintNumber == -1) {
+					// The loop has passed over every sprint and has reached the 'unassigned' sprint
+					roadmap.addStoryToSprint(randomStory, sprint);
+					storiesToInsert.erase(remove(storiesToInsert.begin(), storiesToInsert.end(), randomStory), storiesToInsert.end());
+					break; // Break out of traversing the sprints and move to the next story
+				}
+				else if (roadmap.validInsert(randomStory, sprint)) {
+					// The story can fit into this sprint
+					roadmap.addStoryToSprint(randomStory, sprint);
+					storiesToInsert.erase(remove(storiesToInsert.begin(), storiesToInsert.end(), randomStory), storiesToInsert.end());
+					break; // Break out of traversing the sprints and move to the next story
+				}
+			}
+		}
+
+		return roadmap;
+	}
+
 	// Repair a partly destroyed solution to a complete solution
 	static Roadmap repair(DestroyedSolution destroyedSolution) {
 		// TODO
 		// - Use CPLEX to find the optimal way to repair the partly-destroyed solution?
 
-		Roadmap roadmap = destroyedSolution.roadmap;
-		vector<Story> removedStories = destroyedSolution.removedStories;
-
-		uniform_int_distribution<int> sprintDistribution(0, roadmap.sprints.size() - 1);
-
-		// Assign the removed stories to random sprints
-		for (Story story : removedStories) {
-			Sprint randomSprint = roadmap.sprints[sprintDistribution(generator)];
-			roadmap.addStoryToSprint(story, randomSprint);
-		}
-
-		return roadmap;
+		return randomGreedyInsertStories(destroyedSolution.removedStories, destroyedSolution.roadmap);
 	}
 
 	// Returns whether the temporary solution should become the new current solution
@@ -702,16 +785,30 @@ public:
 		return temporarySolution.calculateValue() >= currentSolution.calculateValue();
 	}
 
-	static Roadmap run(Roadmap currentSolution, double degreeOfDestruction, double seconds, int nonImprovingIterationsThreshold) {
+	static Roadmap run(Roadmap currentSolution, double seconds, int nonImprovingIterationsThreshold) {
+		// TODO
+		// - Dynamically set the number of elements to destroy
+		//		- if the previous n iterations didn't improve, increase destruction by 1
+		//		- cap the maximum destruction
+		
 		// The best solution visited so far
 		Roadmap bestSolution = currentSolution;
 
 		int nonImprovingIterations = 0;
 
+		int ruinMode = 0; // 0 = radial, 1 = random
+
 		time_t start = time(NULL);
 
 		while (difftime(time(NULL), start) < seconds && nonImprovingIterations < nonImprovingIterationsThreshold) {
-			Roadmap temporarySolution = repair(destroy(currentSolution, degreeOfDestruction));
+			Roadmap temporarySolution;
+			
+			if (ruinMode == 0)
+				temporarySolution = repair(radialRuin(currentSolution, 0.25));
+			else if (ruinMode == 1)
+				temporarySolution = repair(randomRuin(currentSolution, 0.5));
+
+			ruinMode = (ruinMode + 1) % 2;
 
 			if (accept(temporarySolution, currentSolution)) {
 				currentSolution = temporarySolution;
@@ -747,6 +844,9 @@ int main(int argc, char* argv[]) {
 	int numberOfEpics;
 	// Holds the data about each epic
 	vector<Epic> epicData;
+
+	cout << "Generating random data..." << endl;
+	auto t_dataStart = chrono::high_resolution_clock::now();
 
 	switch (argc) {
 	case 4:
@@ -801,6 +901,10 @@ int main(int argc, char* argv[]) {
 		break;
 	}
 
+	auto t_dataEnd = chrono::high_resolution_clock::now();
+
+	cout << "Random data generated in " << chrono::duration<double, std::milli>(t_dataEnd - t_dataStart).count() << " ms" << endl << endl;
+
 	// Local search //////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
@@ -808,41 +912,46 @@ int main(int argc, char* argv[]) {
 	// - Use CPLEX to find an initial feasible, complete solution?
 	
 	// A complete, feasible roadmap
-	Roadmap randomRoadmap;
+	cout << "Building an initial solution..." << endl;
+	auto t_initialStart = chrono::high_resolution_clock::now();
 
-	time_t initialStart = time(NULL);
-	cout << "Searching for admissable initial solution..." << endl;
+	Roadmap initialSolution = LNS::randomGreedyInsertStories(storyData, Roadmap(storyData, epicData, sprintData));
 
-	// Assign every story to a random sprint until it makes a complete, feasible solution
-	do {
-		randomRoadmap = Roadmap(storyData, epicData, sprintData);
+	auto t_initialEnd = chrono::high_resolution_clock::now();
+	cout << "Initial solution (value: " << initialSolution.calculateValue() << ") found in " << chrono::duration<double, std::milli>(t_initialEnd - t_initialStart).count() << " ms" << endl << endl;
 
-		uniform_int_distribution<int> sprintDistribution(0, sprintData.size() - 1);
+	cout << "Solving..." << endl;
+	auto t_solveStart = chrono::high_resolution_clock::now();
 
-		for (Story story : storyData) {
-			Sprint randomSprint = sprintData[sprintDistribution(generator)];
-			randomRoadmap.addStoryToSprint(story, randomSprint);
-		}
-	} while (!randomRoadmap.isFeasible());
+	double maxRunTimeSeconds = 20;
+	int nonImprovingIterations = initialSolution.stories.size() * initialSolution.sprints.size();
+	Roadmap bestSolution = LNS::run(initialSolution, maxRunTimeSeconds, nonImprovingIterations);
 
-	cout << "Initial solution found in " << difftime(time(NULL), initialStart) << " seconds" << endl << endl;
+	auto t_solveEnd = chrono::high_resolution_clock::now();
 
-	cout << "Solving..." << endl << endl;
-	time_t solveStart = time(NULL);
+	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_solveStart).count() << " ms" << endl << endl;
 
-	double maxRunTimeSeconds = 30;
-	int nonImprovingIterations = 1000;
-	Roadmap bestSolution = LNS::run(randomRoadmap, maxRunTimeSeconds, nonImprovingIterations, 0.25);
+	double initialValue = initialSolution.calculateValue();
+	double finalValue = bestSolution.calculateValue();
+	double increase = 100 * (finalValue - initialValue) / initialValue;
 
-	time_t solveEnd = time(NULL);
+	cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
 
-	// Pretty printing ///////////////////////////////////////////////////////
+	// Pretty printing data //////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
-	cout << "Stories:" << endl << endl;
+	/*cout << endl << "Stories:" << endl << endl;
 
 	for (Story story : storyData) {
 		cout << story.toString() << endl;
+	}
+
+	cout << endl;
+
+	cout << "Epics:" << endl << endl;
+
+	for (Epic epic : epicData) {
+		cout << epic.toString() << endl;
 	}
 
 	cout << endl;
@@ -855,20 +964,11 @@ int main(int argc, char* argv[]) {
 
 	cout << endl;
 	cout << "----------------------------------------------------------------" << endl;
-	cout << endl;
+	cout << endl;*/
 
-	cout << bestSolution.printSprintRoadmap() << endl;
+	// Pretty print solution /////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////
 
-	cout << endl;
-	cout << "----------------------------------------------------------------" << endl;
-	cout << endl;
-
-	cout << "Roadmap value: " << bestSolution.calculateValue() << endl << endl;
-
-	cout << "Is feasible: " << boolalpha << bestSolution.isFeasible() << endl;
-	cout << "(" << bestSolution.numberOfSprintCapacitiesViolated() << " sprint capacities exceeded)" << endl;
-	cout << "(" << bestSolution.numberOfStoryDependenciesViolated() << " story dependencies unassigned)" << endl;
-
-	cout << endl;
-	cout << "Solution found in " << difftime(solveEnd, solveStart) << " seconds" << endl;
+	//cout << endl << "----------------------------------------------------------------" << endl << endl;
+	//cout << bestSolution.printSprintRoadmap();
 }
