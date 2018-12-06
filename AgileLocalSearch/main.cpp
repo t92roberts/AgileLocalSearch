@@ -5,13 +5,12 @@
 #include <algorithm>
 #include <time.h>
 #include <math.h>
-#include <chrono>
 #include <random>
 
 using namespace std;
 
-unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-std::default_random_engine generator(seed);
+random_device randDev;
+mt19937 generator(randDev());
 
 class Story {
 public:
@@ -55,6 +54,10 @@ public:
 
 	bool operator == (const Story& other) const {
 		return this->storyNumber == other.storyNumber;
+	}
+
+	bool operator != (const Story& other) const {
+		return this->storyNumber != other.storyNumber;
 	}
 
 	bool operator < (const Story& other) const {
@@ -168,16 +171,25 @@ public:
 class Roadmap {
 public:
 	vector<Story> stories;
+	vector<Epic> epics;
 	vector<Sprint> sprints;
 
 	map<Story, Sprint> storyToSprint;
+	map<Story, Epic> storyToEpic;
 	map<Sprint, vector<Story>> sprintToStories;
 
 	Roadmap() {};
 
-	Roadmap(vector<Story> stories, vector<Sprint> sprints) {
+	Roadmap(vector<Story> stories, vector<Epic> epics, vector<Sprint> sprints) {
 		this->stories = stories;
+		this->epics = epics;
 		this->sprints = sprints;
+
+		for (Epic epic : epics) {
+			for (Story story : epic.stories) {
+				storyToEpic[story] = epic;
+			}
+		}
 	}
 
 	int storyPointsAssignedToSprint(Sprint sprint) {
@@ -604,47 +616,62 @@ public:
 	LNS() {};
 
 	// Return a copy of a complete solution that has been partly destroyed
-	static DestroyedSolution destroy(Roadmap completeSolution) {
+	static DestroyedSolution destroy(Roadmap completeSolution, double degreeOfDestruction) {
 		// TODO
-		// - Don't randomly choose stories, use heuristics + Tabu list to mitigate cycling
-
-		// The percentage of stories to destroy
-		double degreeOfDestruction = 0.15;
+		// - Take a Tabu list as an input (to mitigate cycling)
 
 		// The absolute number of stories to destroy (at least 1)
 		int numberOfStoriesToRemove = max(1, (int)round(degreeOfDestruction * completeSolution.stories.size()));
 
+		uniform_int_distribution<int> storyDistribution(0, completeSolution.stories.size() - 1);
+
+		// A list of the stories removed from the solution
 		vector<Story> removedStories;
 
-		uniform_int_distribution<int> storyDistribution(0, completeSolution.stories.size() - 1);
+		// Keep removing stories and their related stories until the required number have been removed
+		while (numberOfStoriesToRemove > 0) {
+			// Remove a random story
+			Story randomStory = completeSolution.stories[storyDistribution(generator)];
+			Sprint randomStorySprint = completeSolution.storyToSprint[randomStory];
+
+			removedStories.push_back(randomStory);
+			completeSolution.removeStoryFromSprint(randomStory, randomStorySprint);
+
+			--numberOfStoriesToRemove;
+
+			// Remove its dependencies
+			for (int i = 0; i < randomStory.dependencies.size() && numberOfStoriesToRemove > 0; ++i) {
+				Story dependee = randomStory.dependencies[i];
+				Sprint dependeeSprint = completeSolution.storyToSprint[dependee];
+
+				removedStories.push_back(dependee);
+				completeSolution.removeStoryFromSprint(dependee, dependeeSprint);
+
+				--numberOfStoriesToRemove;
+			}
+
+			vector<Story> epicSiblingStories = completeSolution.storyToEpic[randomStory].stories;
+
+			// Remove stories in its epic
+			for (int i = 0; i < epicSiblingStories.size() && numberOfStoriesToRemove > 0; ++i) {
+				Story epicSiblingStory = epicSiblingStories[i];
+
+				if (randomStory != epicSiblingStory) {
+					Sprint epicSiblingStorySprint = completeSolution.storyToSprint[epicSiblingStory];
+
+					removedStories.push_back(epicSiblingStory);
+					completeSolution.removeStoryFromSprint(epicSiblingStory, epicSiblingStorySprint);
+
+					--numberOfStoriesToRemove;
+				}
+			}
+		}
 
 		// A vector of stories sorted by the % of each story's dependencies are unassigned
 		//vector<pair<Story, double>> storyDependenciesViolated = completeSolution.storyDependenciesViolated();
 
 		// A vector of sprints sorted by how utilised they are (as a percentage)
 		//vector<pair<Sprint, double>> sprintUtilisations = completeSolution.sprintUtilisations();
-		
-		while (numberOfStoriesToRemove > 0) {
-			// Remove a random story
-			Story randomStory = completeSolution.stories[storyDistribution(generator)];
-			Sprint assignedSprint = completeSolution.storyToSprint[randomStory];
-			
-			removedStories.push_back(randomStory);
-			completeSolution.removeStoryFromSprint(randomStory, assignedSprint);
-
-			--numberOfStoriesToRemove;
-
-			// Remove its dependencies (if it has any, and more stories need to be removed)
-			for (int i = 0; i < randomStory.dependencies.size() && numberOfStoriesToRemove > 0; ++i) {
-				Story dependee = randomStory.dependencies[i];
-				Sprint assignedSprint = completeSolution.storyToSprint[dependee];
-
-				removedStories.push_back(dependee);
-				completeSolution.removeStoryFromSprint(dependee, assignedSprint);
-
-				--numberOfStoriesToRemove;
-			}
-		}
 
 		return DestroyedSolution(completeSolution, removedStories);
 	}
@@ -675,17 +702,16 @@ public:
 		return temporarySolution.calculateValue() >= currentSolution.calculateValue();
 	}
 
-	static Roadmap run(Roadmap currentSolution, double seconds) {
-		// TODO
-		// - Within a time limit OR less than a threshold of improvement in the past n iterations
-
+	static Roadmap run(Roadmap currentSolution, double degreeOfDestruction, double seconds, int nonImprovingIterationsThreshold) {
 		// The best solution visited so far
 		Roadmap bestSolution = currentSolution;
 
+		int nonImprovingIterations = 0;
+
 		time_t start = time(NULL);
 
-		while (difftime(time(NULL), start) < seconds) {
-			Roadmap temporarySolution = repair(destroy(currentSolution));
+		while (difftime(time(NULL), start) < seconds && nonImprovingIterations < nonImprovingIterationsThreshold) {
+			Roadmap temporarySolution = repair(destroy(currentSolution, degreeOfDestruction));
 
 			if (accept(temporarySolution, currentSolution)) {
 				currentSolution = temporarySolution;
@@ -693,6 +719,9 @@ public:
 
 			if (temporarySolution.calculateValue() > bestSolution.calculateValue() && temporarySolution.isFeasible()) { // Maximisation
 				bestSolution = temporarySolution;
+				nonImprovingIterations = 0;
+			} else {
+				nonImprovingIterations += 1;
 			}
 		}
 
@@ -714,18 +743,38 @@ int main(int argc, char* argv[]) {
 	// Holds the data about each user story
 	vector<Story> storyData;
 
+	// The number of epics in the product backlog
+	int numberOfEpics;
+	// Holds the data about each epic
+	vector<Epic> epicData;
+
 	switch (argc) {
-	case 3:
+	case 4:
+	{
 		numberOfStories = stoi(argv[1]);
-		numberOfSprints = stoi(argv[2]);
+		numberOfEpics = stoi(argv[2]);
+		numberOfSprints = stoi(argv[3]);
 
 		// Generate some test data to optimise
 		storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
+
+		// Epics
+		for (int i = 0; i < numberOfEpics; ++i) {
+			epicData.push_back(Epic(i));
+		}
+
+		uniform_int_distribution<int> epicDistribution(0, epicData.size() - 1);
+
+		// Add every story to a random epic
+		for (Story story : storyData) {
+			epicData[epicDistribution(generator)].stories.push_back(story);
+		}
 
 		sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
 		sprintData.push_back(Sprint(-1, 0, 0)); // A special sprint representing 'unassigned'
 
 		break;
+	}
 	default:
 		Story story0(0, 10, 5);
 		Story story1(1, 8, 4, { story0 });
@@ -736,6 +785,9 @@ int main(int argc, char* argv[]) {
 		storyData.push_back(story2);
 
 		numberOfStories = storyData.size();
+
+		epicData.push_back(Epic(0, { story0, story1 }));
+		epicData.push_back(Epic(1, { story2 }));
 
 		Sprint sprint0(0, 5, 2);
 		Sprint sprint1(1, 5, 1);
@@ -757,10 +809,13 @@ int main(int argc, char* argv[]) {
 	
 	// A complete, feasible roadmap
 	Roadmap randomRoadmap;
-	
+
+	time_t initialStart = time(NULL);
+	cout << "Searching for admissable initial solution..." << endl;
+
 	// Assign every story to a random sprint until it makes a complete, feasible solution
 	do {
-		randomRoadmap = Roadmap(storyData, sprintData);
+		randomRoadmap = Roadmap(storyData, epicData, sprintData);
 
 		uniform_int_distribution<int> sprintDistribution(0, sprintData.size() - 1);
 
@@ -770,8 +825,16 @@ int main(int argc, char* argv[]) {
 		}
 	} while (!randomRoadmap.isFeasible());
 
-	double maxRunTimeSeconds = 5;
-	Roadmap bestSolution = LNS::run(randomRoadmap, maxRunTimeSeconds);
+	cout << "Initial solution found in " << difftime(time(NULL), initialStart) << " seconds" << endl << endl;
+
+	cout << "Solving..." << endl << endl;
+	time_t solveStart = time(NULL);
+
+	double maxRunTimeSeconds = 30;
+	int nonImprovingIterations = 1000;
+	Roadmap bestSolution = LNS::run(randomRoadmap, maxRunTimeSeconds, nonImprovingIterations, 0.25);
+
+	time_t solveEnd = time(NULL);
 
 	// Pretty printing ///////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
@@ -805,4 +868,7 @@ int main(int argc, char* argv[]) {
 	cout << "Is feasible: " << boolalpha << bestSolution.isFeasible() << endl;
 	cout << "(" << bestSolution.numberOfSprintCapacitiesViolated() << " sprint capacities exceeded)" << endl;
 	cout << "(" << bestSolution.numberOfStoryDependenciesViolated() << " story dependencies unassigned)" << endl;
+
+	cout << endl;
+	cout << "Solution found in " << difftime(solveEnd, solveStart) << " seconds" << endl;
 }
