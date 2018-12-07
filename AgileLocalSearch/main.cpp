@@ -9,8 +9,10 @@
 
 using namespace std;
 
-random_device randDev;
-mt19937 generator(randDev());
+// Returns a random int between min and max (both inclusive) using a uniform distribution
+int randomInt(int min, int max) {
+	return rand() % (max - min + 1) + min;
+}
 
 class Story {
 public:
@@ -586,18 +588,13 @@ vector<Story> randomlyGenerateStories(int numberOfStories, int minBusinessValue,
 	// Geometric sequence of probabilities for the discrete distribution random number generator
 	vector<double> probabilities = geometricSequence(0.5, 0.5, (double)numberOfStories);
 
-	uniform_int_distribution<int> bvDistribution(minBusinessValue, maxBusinessValue);
-	uniform_int_distribution<int> spDistribution(minStoryPoints, maxStoryPoints);
-
 	// Create stories with random values
 	for (int i = 0; i < numberOfStories; ++i) {
-		int businessValue = bvDistribution(generator);
-		int storyPoints = spDistribution(generator);
+		int businessValue = randomInt(minBusinessValue, maxBusinessValue);
+		int storyPoints = randomInt(minStoryPoints, maxStoryPoints);
 
 		storyData.push_back(Story(i, businessValue, storyPoints));
 	}
-
-	uniform_int_distribution<int> dependeeDistribution(0, numberOfStories - 1);
 
 	for (int i = 0; i < numberOfStories; ++i) {
 		// The maximum number of dependencies that story i can have
@@ -606,7 +603,7 @@ vector<Story> randomlyGenerateStories(int numberOfStories, int minBusinessValue,
 
 		for (int j = 0; j < maxNumberOfDependencies; ++j) {
 			// Pick a random story as a potential dependency of story i
-			Story potentialDependee = storyData[dependeeDistribution(generator)];
+			Story potentialDependee = storyData[randomInt(0, numberOfStories - 1)];
 
 			// Check if the dependency is the same as story i
 			bool isSelfLoop = potentialDependee == storyData[i];
@@ -640,10 +637,8 @@ vector<Story> randomlyGenerateStories(int numberOfStories, int minBusinessValue,
 vector<Sprint> randomlyGenerateSprints(int numberOfSprints, int minCapacity, int maxCapacity) {
 	vector<Sprint> sprintData;
 
-	uniform_int_distribution<int> capacityDistribution(minCapacity, maxCapacity);
-
 	for (int i = 0; i < numberOfSprints; ++i) {
-		int capacity = capacityDistribution(generator);
+		int capacity = randomInt(minCapacity, maxCapacity);
 
 		// Sprint(sprintNumber, sprintCapacity, sprintBonus)
 		sprintData.push_back(Sprint(i, capacity, numberOfSprints - i));
@@ -686,7 +681,7 @@ public:
 
 			// Prevent trying to remove the same story multiple times
 			do {
-				randomStory = completeSolution.stories[storyDistribution(generator)];
+				randomStory = completeSolution.stories[randomInt(0, completeSolution.stories.size() - 1)];
 			} while (find(removedStories.begin(), removedStories.end(), randomStory) != removedStories.end());
 			Sprint randomStorySprint = completeSolution.storyToSprint[randomStory];
 
@@ -708,7 +703,7 @@ public:
 
 			// Prevent trying to remove the same story multiple times
 			do {
-				randomStory = completeSolution.stories[storyDistribution(generator)];
+				randomStory = completeSolution.stories[randomInt(0, completeSolution.stories.size() - 1)];
 			} while (find(removedStories.begin(), removedStories.end(), randomStory) != removedStories.end());
 			
 			Sprint randomStorySprint = completeSolution.storyToSprint[randomStory];
@@ -820,6 +815,9 @@ public:
 };
 
 int main(int argc, char* argv[]) {
+	// Seed the random number generator
+	srand(time(NULL));
+
 	// The number of full time employees able to work on tasks (to estimate the sprint velocity)
 	int numberOfFTEs = 5;
 
@@ -860,7 +858,7 @@ int main(int argc, char* argv[]) {
 
 		// Add every story to a random epic
 		for (Story story : storyData) {
-			epicData[epicDistribution(generator)].stories.push_back(story);
+			epicData[randomInt(0, epicData.size() - 1)].stories.push_back(story);
 		}
 
 		sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
