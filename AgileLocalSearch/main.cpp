@@ -38,14 +38,12 @@ public:
 		if (this->dependencies.size() > 0) {
 			string dependenciesString = "";
 
-			for (auto it = this->dependencies.begin(); it != this->dependencies.end(); ++it) {
-				Story dependee = *it;
-
-				if (it == this->dependencies.begin()) {
-					dependenciesString += "Story " + to_string(dependee.storyNumber);
+			for (int i = 0; i < this->dependencies.size(); ++i) {
+				if (i == 0) {
+					dependenciesString += "Story " + to_string(this->dependencies[i].storyNumber);
 				}
 				else {
-					dependenciesString += ", Story " + to_string(dependee.storyNumber);
+					dependenciesString += ", Story " + to_string(this->dependencies[i].storyNumber);
 				}
 			}
 
@@ -100,14 +98,12 @@ public:
 		if (this->stories.size() > 0) {
 			string storiesString = "";
 
-			for (auto it = stories.begin(); it != stories.end(); ++it) {
-				Story story = *it;
-
-				if (it == stories.begin()) {
-					storiesString += "Story " + to_string(story.storyNumber);
+			for (int i = 0; i < this->stories.size(); ++i) {
+				if (i == 0) {
+					storiesString += "Story " + to_string(this->stories[i].storyNumber);
 				}
 				else {
-					storiesString += ", Story " + to_string(story.storyNumber);
+					storiesString += ", Story " + to_string(this->stories[i].storyNumber);
 				}
 			}
 
@@ -205,11 +201,8 @@ public:
 		this->epics = epics;
 		this->sprints = sprints;
 
-		for (auto epicIt = epics.begin(); epicIt != epics.end(); ++epicIt) {
-			Epic epic = *epicIt;
-
-			for (auto storyIt = epicIt->stories.begin(); storyIt != epicIt->stories.end();  ++storyIt) {
-				Story story = *storyIt;
+		for (Epic epic : epics) {
+			for (Story story : epic.stories) {
 				storyToEpic[story] = epic;
 			}
 		}
@@ -225,9 +218,7 @@ public:
 			return false;
 
 		// Check that each of the story's dependencies are assigned before the sprint
-		for (auto it = story.dependencies.begin(); it != story.dependencies.end(); ++it) {
-			Story dependee = *it;
-			
+		for (Story dependee : story.dependencies) {
 			// Only stories that are assigned to a sprint are in the map
 			if (storyToSprint.find(dependee) == storyToSprint.end()) {
 				// The dependee isn't assigned to a sprint
@@ -256,8 +247,7 @@ public:
 
 		// Sum up the story points of all the stories assigned to the sprint
 		int assignedStoryPoints = 0;
-		for (auto it = sprintStories.begin(); it != sprintStories.end(); ++it) {
-			Story story = *it;
+		for (Story story : sprintStories) {
 			assignedStoryPoints += story.storyPoints;
 		}
 
@@ -267,8 +257,8 @@ public:
 	vector<pair<Sprint, double>> sprintUtilisations() {
 		vector<pair<Sprint, double>> sprintUtilisations;
 
-		for (auto it = sprintToStories.begin(); it != sprintToStories.end(); ++it) {
-			Sprint sprint = it->first;
+		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
+			Sprint sprint = pair.first;
 
 			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
 				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
@@ -285,15 +275,14 @@ public:
 	vector<pair<Story, double>> storyDependenciesViolated() {
 		vector<pair<Story, double>> storyDependenciesViolated;
 
-		for (auto storyIt = storyToSprint.begin(); storyIt != storyToSprint.end(); ++storyIt) {
-			Story story = storyIt->first;
-			Sprint assignedSprint = storyIt->second;
+		for (pair<Story, Sprint> assignment : storyToSprint) {
+			Story story = assignment.first;
+			Sprint assignedSprint = assignment.second;
 
 			int dependenciesUnassigned = 0;
 
 			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
-				for (auto dependeeIt = story.dependencies.begin(); dependeeIt != story.dependencies.end(); ++dependeeIt) {
-					Story dependee = *dependeeIt;
+				for (Story dependee : story.dependencies) {
 					Sprint dependeeAssignedSprint = storyToSprint[dependee];
 
 					// Only stories that are assigned to a sprint are in the map
@@ -382,8 +371,7 @@ public:
 			Sprint assignedSprint = assignment.second;
 
 			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
-				for (auto it = story.dependencies.begin(); it != story.dependencies.end(); ++it) {
-					Story dependee = *it;
+				for (Story dependee : story.dependencies) {
 					Sprint dependeeAssignedSprint = storyToSprint[dependee];
 
 					// Only stories that are assigned to a sprint are in the map
@@ -439,8 +427,7 @@ public:
 			Sprint assignedSprint = assignment.second;
 
 			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
-				for (auto it = story.dependencies.begin(); it != story.dependencies.end(); ++it) {
-					Story dependee = *it;
+				for (Story dependee : story.dependencies) {
 					Sprint dependeeAssignedSprint = storyToSprint[dependee];
 
 					// Only stories that are assigned to a sprint are in the map
@@ -482,9 +469,7 @@ public:
 	string printSprintRoadmap() {
 		string outputString = "";
 
-		for (auto sprintIt = sprints.begin(); sprintIt != sprints.end(); ++sprintIt) {
-			Sprint sprint = *sprintIt;
-
+		for (Sprint sprint : sprints) {
 			if (sprint.sprintNumber == -1)
 				outputString += "Unassigned";
 			else
@@ -497,9 +482,7 @@ public:
 			if (sprintStories.empty()) {
 				outputString += "\n  >> None";
 			} else {
-				for (auto storyIt = sprintStories.begin(); storyIt != sprintStories.end(); ++storyIt) {
-					Story story = *storyIt;
-
+				for (Story story : sprintStories) {
 					valueDelivered += story.businessValue;
 					storyPointsAssigned += story.storyPoints;
 
@@ -560,9 +543,7 @@ bool _isCyclic(int v, bool visited[], bool *recStack, vector<Story> allStories) 
 		// Recur for all the dependencies of this story 
 		vector<Story> dependencies = allStories[v].dependencies;
 
-		for (auto it = dependencies.begin(); it != dependencies.end(); ++it) {
-			Story dependee = *it;
-
+		for (Story dependee : dependencies) {
 			int dependeeStoryNumber = dependee.storyNumber;
 			if (!visited[dependeeStoryNumber] && _isCyclic(dependeeStoryNumber, visited, recStack, allStories))
 				return true;
@@ -581,7 +562,7 @@ bool _isCyclic(int v, bool visited[], bool *recStack, vector<Story> allStories) 
 // This function is a variation of DFS() in https://www.geeksforgeeks.org/archives/18212
 */
 // Returns true if the DAG of dependencies between stories has a cycle, false if not
-bool isCyclic(vector<Story> allStories) {
+bool isCyclic(vector <Story> allStories) {
 	// Mark all the stories as not visited and not part of recursion stack
 	bool *visited = new bool[allStories.size()];
 	bool *recStack = new bool[allStories.size()];
@@ -731,8 +712,9 @@ public:
 			completeSolution.removeStoryFromSprint(randomStory, randomStorySprint);
 
 			// Remove its dependencies
-			for (auto it = randomStory.dependencies.begin(); it != randomStory.dependencies.end(); ++it) {
-				Story dependee = *it;
+			for (int i = 0; i < randomStory.dependencies.size() && removedStories.size() < numberOfStoriesToRemove; ++i) {
+				Story dependee = randomStory.dependencies[i];
+
 				// Prevent trying to remove the same story multiple times
 				if (find(removedStories.begin(), removedStories.end(), dependee) == removedStories.end()) {
 					Sprint dependeeSprint = completeSolution.storyToSprint[dependee];
@@ -752,9 +734,7 @@ public:
 		while (storiesToInsert.size () > 0) {
 			Story story = storiesToInsert[0];
 			// Greedily re-insert it into a sprint
-			for (auto it = roadmap.sprints.begin(); it != roadmap.sprints.end(); ++it) {
-				Sprint sprint = *it;
-
+			for (Sprint sprint : roadmap.sprints) {
 				if (sprint.sprintNumber == -1) {
 					// The loop has passed over every sprint and has reached the 'unassigned' sprint
 					roadmap.addStoryToSprint(story, sprint);
@@ -877,8 +857,7 @@ int main(int argc, char* argv[]) {
 		uniform_int_distribution<int> epicDistribution(0, epicData.size() - 1);
 
 		// Add every story to a random epic
-		for (auto it = storyData.begin(); it != storyData.end(); ++it) {
-			Story story = *it;
+		for (Story story : storyData) {
 			epicData[randomInt(0, epicData.size() - 1)].stories.push_back(story);
 		}
 
@@ -956,17 +935,15 @@ int main(int argc, char* argv[]) {
 
 	cout << endl << "Stories:" << endl << endl;
 
-	for (auto it = storyData.begin(); it != storyData.end(); ++it) {
-		Story story = *it;
+	for (Story story : storyData) {
 		cout << story.toString() << endl;
 	}
 
-	cout << endl;
+	/*cout << endl;
 
 	cout << "Epics:" << endl << endl;
 
-	for (auto it = epicData.begin(); it != epicData.end(); ++it) {
-		Epic epic = *it;
+	for (Epic epic : epicData) {
 		cout << epic.toString() << endl;
 	}
 
@@ -974,10 +951,9 @@ int main(int argc, char* argv[]) {
 
 	cout << "Sprints:" << endl << endl;
 
-	for (auto it = sprintData.begin(); it != sprintData.end(); ++it) {
-		Sprint sprint = *it;
+	for (Sprint sprint : sprintData) {
 		cout << sprint.toString() << endl;
-	}
+	}*/
 
 	// Pretty print solution /////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
