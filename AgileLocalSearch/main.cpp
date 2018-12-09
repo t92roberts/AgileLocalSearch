@@ -713,7 +713,8 @@ public:
 
 			// Remove its dependencies
 			for (int i = 0; i < randomStory.dependencies.size() && removedStories.size() < numberOfStoriesToRemove; ++i) {
-				Story dependee = randomStory.dependencies[i];
+				int dependeeStoryNumber = randomStory.dependencies[i].storyNumber;
+				Story dependee = completeSolution.stories[dependeeStoryNumber]; // for some reason, taking the story directly from randomStories doesn't make a deep copy of the dependency vector...
 
 				// Prevent trying to remove the same story multiple times
 				if (find(removedStories.begin(), removedStories.end(), dependee) == removedStories.end()) {
@@ -785,18 +786,22 @@ public:
 
 		while (difftime(time(NULL), start) < seconds && nonImprovingIterations < nonImprovingIterationsThreshold) {
 			Roadmap temporarySolution;
-			
-			/*if (ruinMode == 0)
-				temporarySolution = repair(radialRuin(currentSolution, 0.25));
-			else if (ruinMode == 1)
-				temporarySolution = repair(randomRuin(currentSolution, 0.5));
 
-			ruinMode = (ruinMode + 1) % 2;*/
-
-			double degreeOfDestruction = 0.5;
-			int numberOfStoriesToRemove = max(1, (int)round(degreeOfDestruction * currentSolution.stories.size()));
+			double degreeOfDestruction;
+			int numberOfStoriesToRemove;
 			
-			temporarySolution = repair(randomRuin(currentSolution, numberOfStoriesToRemove));
+			if (ruinMode == 0) {
+				degreeOfDestruction = 0.25;
+				numberOfStoriesToRemove = max(1, (int)round(degreeOfDestruction * currentSolution.stories.size()));
+				temporarySolution = repair(radialRuin(currentSolution, numberOfStoriesToRemove));
+			}
+			else if (ruinMode == 1) {
+				degreeOfDestruction = 0.5;
+				numberOfStoriesToRemove = max(1, (int)round(degreeOfDestruction * currentSolution.stories.size()));
+				temporarySolution = repair(randomRuin(currentSolution, numberOfStoriesToRemove));
+			}
+
+			ruinMode = (ruinMode + 1) % 2;
 
 			if (accept(temporarySolution, currentSolution)) {
 				currentSolution = temporarySolution;
@@ -915,7 +920,7 @@ int main(int argc, char* argv[]) {
 	auto t_solveStart = chrono::high_resolution_clock::now();
 
 	double maxRunTimeSeconds = 20;
-	int nonImprovingIterations = initialSolution.stories.size() * initialSolution.sprints.size();
+	int nonImprovingIterations = 1000;
 	Roadmap bestSolution = LNS::run(initialSolution, maxRunTimeSeconds, nonImprovingIterations);
 
 	auto t_solveEnd = chrono::high_resolution_clock::now();
@@ -931,7 +936,7 @@ int main(int argc, char* argv[]) {
 	// Pretty printing data //////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
-	cout << endl << "----------------------------------------------------------------" << endl << endl;
+	/*cout << endl << "----------------------------------------------------------------" << endl << endl;
 
 	cout << endl << "Stories:" << endl << endl;
 
@@ -939,7 +944,7 @@ int main(int argc, char* argv[]) {
 		cout << story.toString() << endl;
 	}
 
-	/*cout << endl;
+	cout << endl;
 
 	cout << "Epics:" << endl << endl;
 
@@ -958,9 +963,9 @@ int main(int argc, char* argv[]) {
 	// Pretty print solution /////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
-	cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
+	/*cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
 	cout << initialSolution.printSprintRoadmap();
 
 	cout << endl << "Best solution --------------------------------------------------" << endl << endl;
-	cout << bestSolution.printSprintRoadmap();
+	cout << bestSolution.printSprintRoadmap();*/
 }
