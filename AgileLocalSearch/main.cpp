@@ -15,6 +15,12 @@ int randomInt(int min, int max) {
 	return rand() % (max - min + 1) + min;
 }
 
+// Returns a random double between min and max (both inclusive) using a uniform distribution
+double randomDouble(double min, double max) {
+	double f = (double)rand() / RAND_MAX;
+	return min + f * (max - min);
+}
+
 class Story {
 public:
 	int storyNumber, businessValue, storyPoints;
@@ -471,31 +477,29 @@ public:
 		string outputString = "";
 
 		for (Sprint sprint : sprints) {
-			if (!sprintToStories[sprint].empty()) {
-				if (sprint.sprintNumber == -1)
-					outputString += "Product Backlog";
-				else
-					outputString += sprint.toString();
+			if (sprint.sprintNumber == -1)
+				outputString += "Product Backlog";
+			else
+				outputString += sprint.toString();
 
-				vector<Story> sprintStories = sprintToStories[sprint];
-				int valueDelivered = 0;
-				int storyPointsAssigned = 0;
+			vector<Story> sprintStories = sprintToStories[sprint];
+			int valueDelivered = 0;
+			int storyPointsAssigned = 0;
 
-				if (sprintStories.empty()) {
-					outputString += "\n  >> None";
-				} else {
-					for (Story story : sprintStories) {
-						valueDelivered += story.businessValue;
-						storyPointsAssigned += story.storyPoints;
+			if (sprintStories.empty()) {
+				outputString += "\n  >> None";
+			} else {
+				for (Story story : sprintStories) {
+					valueDelivered += story.businessValue;
+					storyPointsAssigned += story.storyPoints;
 
-						outputString += "\n  >> " + story.toString();
-					}
+					outputString += "\n  >> " + story.toString();
 				}
-
-				outputString += "\nValue: " + to_string(valueDelivered) + " (weighted value: " + to_string(valueDelivered * sprint.sprintBonus) + "), story points: " + to_string(storyPointsAssigned);
-
-				outputString += "\n\n";
 			}
+
+			outputString += "\nValue: " + to_string(valueDelivered) + " (weighted value: " + to_string(valueDelivered * sprint.sprintBonus) + "), story points: " + to_string(storyPointsAssigned);
+
+			outputString += "\n\n";
 		}
 
 		return outputString;
@@ -789,13 +793,18 @@ public:
 	}
 
 	// Returns whether the temporary solution should become the new current solution
-	static bool accept(Roadmap temporarySolution, Roadmap currentSolution) {
-		// TODO
-		// - Don't use hill climbing
-		return temporarySolution.calculateValue() >= currentSolution.calculateValue();
+	static bool accept(Roadmap temporarySolution, Roadmap currentSolution, double temperature) {
+		double delta = (double) temporarySolution.calculateValue() - currentSolution.calculateValue();
+
+		if (delta > 0) // Accept improving moves
+			return true;
+		else if (exp(-1 * delta / temperature) > randomDouble(0, 1)) // Accept non-improving moves according to the temperature
+			return true;
+		else
+			return false;
 	}
 
-	static Roadmap run(Roadmap currentSolution, double seconds, int nonImprovingIterationsThreshold) {
+	static Roadmap run(Roadmap currentSolution) {
 		// TODO
 		// - Dynamically set the number of elements to destroy
 		//		- if the previous n iterations didn't improve, increase destruction by 1
@@ -804,13 +813,15 @@ public:
 		// The best solution visited so far
 		Roadmap bestSolution = currentSolution;
 
-		int nonImprovingIterations = 0;
-
 		int ruinMode = 0; // 0 = radial, 1 = random
 
 		time_t start = time(NULL);
 
-		while (difftime(time(NULL), start) < seconds && nonImprovingIterations < nonImprovingIterationsThreshold) {
+		double temperature = DBL_MAX;
+		double coolingRate = 0.9;
+		double cooledTemperature = 1e-10;
+
+		while (temperature > cooledTemperature) {
 			Roadmap temporarySolution;
 
 			double degreeOfDestruction;
@@ -829,16 +840,15 @@ public:
 
 			ruinMode = (ruinMode + 1) % 2;
 
-			if (accept(temporarySolution, currentSolution)) {
+			if (accept(temporarySolution, currentSolution, temperature)) {
 				currentSolution = temporarySolution;
 			}
 
-			if (temporarySolution.calculateValue() > bestSolution.calculateValue() && temporarySolution.isFeasible()) { // Maximisation
+			if (temporarySolution.calculateValue() > bestSolution.calculateValue() && temporarySolution.isFeasible()) // Maximisation
 				bestSolution = temporarySolution;
-				nonImprovingIterations = 0;
-			} else {
-				nonImprovingIterations += 1;
-			}
+
+			temperature *= coolingRate;
+			
 		}
 
 		return bestSolution;
@@ -871,11 +881,11 @@ int main(int argc, char* argv[]) {
 	auto t_dataStart = chrono::high_resolution_clock::now();
 
 	switch (argc) {
-	case 4:
+	case 3:
 	{
 		numberOfStories = stoi(argv[1]);
-		numberOfEpics = stoi(argv[2]);
-		numberOfSprints = stoi(argv[3]);
+		numberOfEpics = numberOfStories * 0.2;
+		numberOfSprints = stoi(argv[2]);
 
 		// Generate some test data to optimise
 		storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
@@ -938,14 +948,12 @@ int main(int argc, char* argv[]) {
 	Roadmap initialSolution = LNS::greedyInsertStories(storyData, Roadmap(storyData, epicData, sprintData));
 
 	auto t_initialEnd = chrono::high_resolution_clock::now();
-	cout << "Initial solution (value: " << initialSolution.calculateValue() << ") found in " << chrono::duration<double, std::milli>(t_initialEnd - t_initialStart).count() << " ms" << endl << endl;
+	cout << "Initial solution found in " << chrono::duration<double, std::milli>(t_initialEnd - t_initialStart).count() << " ms" << endl << endl;
 
 	cout << "Solving..." << endl;
 	auto t_solveStart = chrono::high_resolution_clock::now();
 
-	double maxRunTimeSeconds = 20;
-	int nonImprovingIterations = 10000;
-	Roadmap bestSolution = LNS::run(initialSolution, maxRunTimeSeconds, nonImprovingIterations);
+	Roadmap bestSolution = LNS::run(initialSolution);
 
 	auto t_solveEnd = chrono::high_resolution_clock::now();
 
@@ -960,7 +968,7 @@ int main(int argc, char* argv[]) {
 	// Pretty printing data //////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
-	/*cout << endl << "----------------------------------------------------------------" << endl << endl;
+	cout << endl << "----------------------------------------------------------------" << endl << endl;
 
 	cout << endl << "Stories:" << endl << endl;
 
@@ -970,7 +978,7 @@ int main(int argc, char* argv[]) {
 
 	cout << endl;
 
-	cout << "Epics:" << endl << endl;
+	/*cout << "Epics:" << endl << endl;
 
 	for (Epic epic : epicData) {
 		cout << epic.toString() << endl;
@@ -987,13 +995,13 @@ int main(int argc, char* argv[]) {
 	// Pretty print solution /////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
-	/*cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
-	cout << initialSolution.printSprintRoadmap();
+	//cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
+	//cout << initialSolution.printSprintRoadmap();
 
 	cout << endl << "Best solution --------------------------------------------------" << endl << endl;
 	cout << bestSolution.printSprintRoadmap();
 
 	//////////////////////////////////////////////////////////////////////////
 	
-	cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;*/
+	//cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
 }
