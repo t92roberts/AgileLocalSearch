@@ -6,6 +6,7 @@
 #include <chrono>
 #include <math.h>
 #include <random>
+#include <queue>
 
 using namespace std;
 
@@ -209,7 +210,7 @@ public:
 	}
 
 	bool validInsert(Story story, Sprint sprint) {
-		// It's always valid to add a story to the 'unassigned' sprint
+		// It's always valid to add a story to the product backlog sprint
 		if (sprint.sprintNumber == -1)
 			return true;
 
@@ -228,7 +229,7 @@ public:
 			Sprint dependeeAssignedSprint = storyToSprint[dependee];
 			
 			if (dependeeAssignedSprint.sprintNumber == -1) {
-				// The dependee is assigned to the special 'unassigned' sprint
+				// The dependee is assigned to the product backlog
 				return false;
 			}
 			
@@ -260,7 +261,7 @@ public:
 		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
 
-			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
+			if (sprint.sprintNumber != -1) { // Don't check the capacity of the product backlog
 				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
 				double utilisation = (double)assignedStoryPoints / (double)sprint.sprintCapacity;
 
@@ -281,7 +282,7 @@ public:
 
 			int dependenciesUnassigned = 0;
 
-			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
+			if (assignedSprint.sprintNumber != -1) { // Don't check stories assigned to the product backlog
 				for (Story dependee : story.dependencies) {
 					Sprint dependeeAssignedSprint = storyToSprint[dependee];
 
@@ -291,7 +292,7 @@ public:
 						dependenciesUnassigned += 1;
 					}
 					else if (dependeeAssignedSprint.sprintNumber == -1) {
-						// The dependee is assigned to the special 'unassigned' sprint
+						// The dependee is assigned to the product backlog
 						dependenciesUnassigned += 1;
 					}
 					else {
@@ -340,7 +341,7 @@ public:
 			Story story = pair.first;
 			Sprint sprint = pair.second;
 
-			if (sprint.sprintNumber != -1) // Don't add value from unassigned sprints
+			if (sprint.sprintNumber != -1) // Don't add value from stories assigned to the product backlog
 				totalValue += story.businessValue * sprint.sprintBonus;
 		}
 
@@ -351,7 +352,7 @@ public:
 		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
 
-			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
+			if (sprint.sprintNumber != -1) { // Don't check the capacity of the product backlog
 				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
 
 				// Check if the sprint is overloaded
@@ -370,7 +371,7 @@ public:
 			Story story = assignment.first;
 			Sprint assignedSprint = assignment.second;
 
-			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
+			if (assignedSprint.sprintNumber != -1) { // Don't check stories assigned to the product backlog
 				for (Story dependee : story.dependencies) {
 					Sprint dependeeAssignedSprint = storyToSprint[dependee];
 
@@ -379,7 +380,7 @@ public:
 						// The dependee isn't assigned to a sprint
 						return false;
 					} else if (dependeeAssignedSprint.sprintNumber == -1) {
-						// The dependee is assigned to the special 'unassigned' sprint
+						// The dependee is assigned to the special product backlog
 						return false;
 					} else {
 						// Check where the story is assigned compared to its dependee
@@ -405,7 +406,7 @@ public:
 		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
 
-			if (sprint.sprintNumber != -1) { // Don't check the capacity of the 'unassigned' sprint
+			if (sprint.sprintNumber != -1) { // Don't check the capacity of the product backlog
 				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
 
 				// Check if the sprint is overloaded
@@ -426,7 +427,7 @@ public:
 			Story story = assignment.first;
 			Sprint assignedSprint = assignment.second;
 
-			if (assignedSprint.sprintNumber != -1) { // Don't check an unassigned story
+			if (assignedSprint.sprintNumber != -1) { // Don't check stories assigned to the product backlog
 				for (Story dependee : story.dependencies) {
 					Sprint dependeeAssignedSprint = storyToSprint[dependee];
 
@@ -436,7 +437,7 @@ public:
 						counter += 1;
 					}
 					else if (dependeeAssignedSprint.sprintNumber == -1) {
-						// The dependee is assigned to the special 'unassigned' sprint
+						// The dependee is assigned to the product backlog
 						counter += 1;
 					}
 					else {
@@ -471,7 +472,7 @@ public:
 
 		for (Sprint sprint : sprints) {
 			if (sprint.sprintNumber == -1)
-				outputString += "Unassigned";
+				outputString += "Product Backlog";
 			else
 				outputString += sprint.toString();
 
@@ -665,6 +666,63 @@ class LNS {
 public:
 	LNS() {};
 
+	/*
+	// Adapted from:
+	// GeeksforGeeks. (2018). Breadth First Search or BFS for a Graph - GeeksforGeeks. [online] Available at: https://www.geeksforgeeks.org/breadth-first-search-or-bfs-for-a-graph/ [Accessed 9 Dec. 2018].
+	*/
+	static vector<Story> traverseDependenciesBF(Story story, Roadmap roadmap, vector<Story> removedStories, int numberOfStoriesToRemove) {
+		bool *visited = new bool[roadmap.stories.size()];
+
+		for (int i = 0; i < roadmap.stories.size(); ++i) {
+			visited[i] = false;
+		}
+
+		queue<Story> queue;
+
+		visited[story.storyNumber] = true;
+		queue.push(story);
+
+		while (!queue.empty() && removedStories.size() < numberOfStoriesToRemove) {
+			story = queue.front();
+			queue.pop();
+
+			// Prevent removing the same story multiple times
+			if (find(removedStories.begin(), removedStories.end(), story) == removedStories.end())
+				removedStories.push_back(story);
+
+			for (Story dependee : story.dependencies) {
+				dependee = roadmap.stories[dependee.storyNumber];
+
+				if (!visited[dependee.storyNumber]) {
+					visited[dependee.storyNumber] = true;
+					queue.push(dependee);
+				}
+			}
+		}
+
+		return removedStories;
+	}
+
+	static DestroyedSolution radialRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
+		uniform_int_distribution<int> storyDistribution(0, completeSolution.stories.size() - 1);
+
+		// A list of the stories removed from the solution
+		vector<Story> removedStories;
+
+		while (removedStories.size() < numberOfStoriesToRemove) {
+			Story randomStory;
+
+			// Prevent trying to remove the same story multiple times
+			do {
+				randomStory = completeSolution.stories[randomInt(0, completeSolution.stories.size() - 1)];
+			} while (find(removedStories.begin(), removedStories.end(), randomStory) != removedStories.end());
+
+			removedStories = traverseDependenciesBF(randomStory, completeSolution, removedStories, numberOfStoriesToRemove);
+		}
+
+		return DestroyedSolution(completeSolution, removedStories);
+	}
+
 	// Randomly selects stories to remove
 	static DestroyedSolution randomRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
 		// TODO
@@ -692,43 +750,6 @@ public:
 		return DestroyedSolution(completeSolution, removedStories);
 	}
 
-	static DestroyedSolution radialRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
-		uniform_int_distribution<int> storyDistribution(0, completeSolution.stories.size() - 1);
-
-		// A list of the stories removed from the solution
-		vector<Story> removedStories;
-		
-		while (removedStories.size() < numberOfStoriesToRemove) {
-			Story randomStory;
-
-			// Prevent trying to remove the same story multiple times
-			do {
-				randomStory = completeSolution.stories[randomInt(0, completeSolution.stories.size() - 1)];
-			} while (find(removedStories.begin(), removedStories.end(), randomStory) != removedStories.end());
-			
-			Sprint randomStorySprint = completeSolution.storyToSprint[randomStory];
-
-			removedStories.push_back(randomStory);
-			completeSolution.removeStoryFromSprint(randomStory, randomStorySprint);
-
-			// Remove its dependencies
-			for (int i = 0; i < randomStory.dependencies.size() && removedStories.size() < numberOfStoriesToRemove; ++i) {
-				int dependeeStoryNumber = randomStory.dependencies[i].storyNumber;
-				Story dependee = completeSolution.stories[dependeeStoryNumber]; // for some reason, taking the story directly from randomStories doesn't make a deep copy of the dependency vector...
-
-				// Prevent trying to remove the same story multiple times
-				if (find(removedStories.begin(), removedStories.end(), dependee) == removedStories.end()) {
-					Sprint dependeeSprint = completeSolution.storyToSprint[dependee];
-
-					removedStories.push_back(dependee);
-					completeSolution.removeStoryFromSprint(dependee, dependeeSprint);
-				}
-			}
-		}
-
-		return DestroyedSolution(completeSolution, removedStories);
-	}
-
 	static Roadmap greedyInsertStories(vector<Story> storiesToInsert, Roadmap roadmap) {
 		sort(storiesToInsert.begin(), storiesToInsert.end(), StoryGreedySorting());
 
@@ -737,7 +758,7 @@ public:
 			// Greedily re-insert it into a sprint
 			for (Sprint sprint : roadmap.sprints) {
 				if (sprint.sprintNumber == -1) {
-					// The loop has passed over every sprint and has reached the 'unassigned' sprint
+					// The loop has passed over every sprint and has reached the 'product backlog' sprint
 					roadmap.addStoryToSprint(story, sprint);
 					storiesToInsert.erase(remove(storiesToInsert.begin(), storiesToInsert.end(), story), storiesToInsert.end());
 					break; // Break out of traversing the sprints and move to the next story
@@ -867,7 +888,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
-		sprintData.push_back(Sprint(-1, 0, 0)); // A special sprint representing 'unassigned'
+		sprintData.push_back(Sprint(-1, 0, 0)); // A special sprint representing 'unassigned' (i.e. assigned to the product backlog)
 
 		break;
 	}
@@ -890,7 +911,7 @@ int main(int argc, char* argv[]) {
 
 		sprintData.push_back(sprint0);
 		sprintData.push_back(sprint1);
-		sprintData.push_back(Sprint(-1, 0, 0)); // A special sprint representing 'unassigned'
+		sprintData.push_back(Sprint(-1, 0, 0)); // A special sprint representing the product backlog
 
 		numberOfSprints = sprintData.size();
 
@@ -918,6 +939,14 @@ int main(int argc, char* argv[]) {
 
 	cout << "Solving..." << endl;
 	auto t_solveStart = chrono::high_resolution_clock::now();
+
+	//////////////////////////////////////////////
+	for (Story story : storyData) {
+		cout << story.toString() << endl;
+	}
+
+	cout << endl;
+	//////////////////////////////////////////////
 
 	double maxRunTimeSeconds = 20;
 	int nonImprovingIterations = 1000;
