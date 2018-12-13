@@ -471,29 +471,31 @@ public:
 		string outputString = "";
 
 		for (Sprint sprint : sprints) {
-			if (sprint.sprintNumber == -1)
-				outputString += "Product Backlog";
-			else
-				outputString += sprint.toString();
+			if (!sprintToStories[sprint].empty()) {
+				if (sprint.sprintNumber == -1)
+					outputString += "Product Backlog";
+				else
+					outputString += sprint.toString();
 
-			vector<Story> sprintStories = sprintToStories[sprint];
-			int valueDelivered = 0;
-			int storyPointsAssigned = 0;
+				vector<Story> sprintStories = sprintToStories[sprint];
+				int valueDelivered = 0;
+				int storyPointsAssigned = 0;
 
-			if (sprintStories.empty()) {
-				outputString += "\n  >> None";
-			} else {
-				for (Story story : sprintStories) {
-					valueDelivered += story.businessValue;
-					storyPointsAssigned += story.storyPoints;
+				if (sprintStories.empty()) {
+					outputString += "\n  >> None";
+				} else {
+					for (Story story : sprintStories) {
+						valueDelivered += story.businessValue;
+						storyPointsAssigned += story.storyPoints;
 
-					outputString += "\n  >> " + story.toString();
+						outputString += "\n  >> " + story.toString();
+					}
 				}
+
+				outputString += "\nValue: " + to_string(valueDelivered) + " (weighted value: " + to_string(valueDelivered * sprint.sprintBonus) + "), story points: " + to_string(storyPointsAssigned);
+
+				outputString += "\n\n";
 			}
-
-			outputString += "\nValue: " + to_string(valueDelivered) + " (weighted value: " + to_string(valueDelivered * sprint.sprintBonus) + "), story points: " + to_string(storyPointsAssigned);
-
-			outputString += "\n\n";
 		}
 
 		return outputString;
@@ -704,8 +706,6 @@ public:
 	}
 
 	static DestroyedSolution radialRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
-		uniform_int_distribution<int> storyDistribution(0, completeSolution.stories.size() - 1);
-
 		// A list of the stories removed from the solution
 		vector<Story> removedStories;
 
@@ -720,6 +720,13 @@ public:
 			removedStories = traverseDependenciesBF(randomStory, completeSolution, removedStories, numberOfStoriesToRemove);
 		}
 
+		// Remove the stories from their sprints
+		for (Story removedStory : removedStories) {
+			removedStory = completeSolution.stories[removedStory.storyNumber];
+			Sprint removedStorySprint = completeSolution.storyToSprint[removedStory];
+			completeSolution.removeStoryFromSprint(removedStory, removedStorySprint);
+		}
+
 		return DestroyedSolution(completeSolution, removedStories);
 	}
 
@@ -727,8 +734,6 @@ public:
 	static DestroyedSolution randomRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
 		// TODO
 		// - Take a Tabu list as an input (to mitigate cycling)
-
-		uniform_int_distribution<int> storyDistribution(0, completeSolution.stories.size() - 1);
 
 		// A list of the stories removed from the solution
 		vector<Story> removedStories;
@@ -880,8 +885,6 @@ int main(int argc, char* argv[]) {
 			epicData.push_back(Epic(i));
 		}
 
-		uniform_int_distribution<int> epicDistribution(0, epicData.size() - 1);
-
 		// Add every story to a random epic
 		for (Story story : storyData) {
 			epicData[randomInt(0, epicData.size() - 1)].stories.push_back(story);
@@ -940,16 +943,8 @@ int main(int argc, char* argv[]) {
 	cout << "Solving..." << endl;
 	auto t_solveStart = chrono::high_resolution_clock::now();
 
-	//////////////////////////////////////////////
-	for (Story story : storyData) {
-		cout << story.toString() << endl;
-	}
-
-	cout << endl;
-	//////////////////////////////////////////////
-
 	double maxRunTimeSeconds = 20;
-	int nonImprovingIterations = 1000;
+	int nonImprovingIterations = 10000;
 	Roadmap bestSolution = LNS::run(initialSolution, maxRunTimeSeconds, nonImprovingIterations);
 
 	auto t_solveEnd = chrono::high_resolution_clock::now();
@@ -996,5 +991,9 @@ int main(int argc, char* argv[]) {
 	cout << initialSolution.printSprintRoadmap();
 
 	cout << endl << "Best solution --------------------------------------------------" << endl << endl;
-	cout << bestSolution.printSprintRoadmap();*/
+	cout << bestSolution.printSprintRoadmap();
+
+	//////////////////////////////////////////////////////////////////////////
+	
+	cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;*/
 }
