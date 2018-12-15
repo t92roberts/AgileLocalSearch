@@ -331,11 +331,11 @@ int main(int argc, char* argv[]) {
 	// Holds the data about each epic
 	vector<Epic> epicData;
 
-	for (int i = 10; i <= 200; i += 10) {
+	for (int i = 10; i <= 100; i += 10) {
 		cout << "Generating size " << i << "..." << endl;
 
 		numberOfStories = i;
-		numberOfEpics = min(1.0, numberOfStories * 0.2);
+		numberOfEpics = max(1.0, numberOfStories * 0.2);
 		numberOfSprints = i;
 
 		// Generate some test data to optimise

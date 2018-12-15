@@ -652,8 +652,6 @@ public:
 	}
 
 	static Roadmap greedyInsertStories(vector<Story> storiesToInsert, Roadmap roadmap) {
-		sort(storiesToInsert.begin(), storiesToInsert.end(), StoryGreedySorting());
-
 		while (storiesToInsert.size () > 0) {
 			Story story = storiesToInsert[0];
 			// Greedily re-insert it into a sprint
@@ -681,6 +679,7 @@ public:
 		// TODO
 		// - Use CPLEX to find the optimal way to repair the partly-destroyed solution?
 
+		sort(destroyedSolution.removedStories.begin(), destroyedSolution.removedStories.end(), StoryGreedySorting());
 		return greedyInsertStories(destroyedSolution.removedStories, destroyedSolution.roadmap);
 	}
 
@@ -850,68 +849,29 @@ int main(int argc, char* argv[]) {
 	//cout << "Building an initial solution..." << endl;
 	auto t_initialStart = chrono::high_resolution_clock::now();
 
-	Roadmap initialSolution = LNS::greedyInsertStories(storyData, Roadmap(storyData, sprintData));
+	vector<Story> shuffledStories = storyData;
+	random_shuffle(shuffledStories.begin(), shuffledStories.end());
 
-	//auto t_initialEnd = chrono::high_resolution_clock::now();
-	//cout << "Initial solution found in " << chrono::duration<double, std::milli>(t_initialEnd - t_initialStart).count() << " ms" << endl << endl;
-
-	//cout << "Solving..." << endl;
-	//auto t_solveStart = chrono::high_resolution_clock::now();
+	Roadmap initialSolution = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
 
 	Roadmap bestSolution = LNS::run(initialSolution);
 
 	auto t_solveEnd = chrono::high_resolution_clock::now();
 
-	//cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_solveStart).count() << " ms" << endl << endl;
-
-	/*double initialValue = initialSolution.calculateValue();
-	double finalValue = bestSolution.calculateValue();
-	double increase = 100 * (finalValue - initialValue) / initialValue;
-
-	cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
-	cout << "Total weighted business value: " << finalValue << endl;
-
-	// Pretty printing data //////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////
-
-	cout << endl << "----------------------------------------------------------------" << endl << endl;
-
-	cout << endl << "Stories:" << endl << endl;
-
-	for (Story story : storyData) {
-		cout << story.toString() << endl;
-	}
-
-	cout << endl;
-
-	cout << "Epics:" << endl << endl;
-
-	for (Epic epic : epicData) {
-		cout << epic.toString() << endl;
-	}
-
-	cout << endl;
-
-	cout << "Sprints:" << endl << endl;
-
-	for (Sprint sprint : sprintData) {
-		cout << sprint.toString() << endl;
-	}
-
-	// Pretty print solution /////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////
-
-	cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
-	cout << initialSolution.printSprintRoadmap();*/
-
-	//cout << endl << "Best solution --------------------------------------------------" << endl << endl;
-	//cout << bestSolution.printSprintRoadmap();
-
-	//////////////////////////////////////////////////////////////////////////
-	
 	//cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
 	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl << endl;
 	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
 	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
 	cout << "--------------------------------------------------------------------------------------------------------" << endl;
+
+	// Pretty print solution /////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////
+
+	/*cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
+	cout << initialSolution.printSprintRoadmap();
+
+	cout << endl << "Best solution --------------------------------------------------" << endl << endl;
+	cout << bestSolution.printSprintRoadmap();*/
+
+	//////////////////////////////////////////////////////////////////////////
 }
