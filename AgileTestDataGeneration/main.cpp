@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <algorithm>
 
 using namespace std;
 
@@ -330,12 +331,12 @@ int main(int argc, char* argv[]) {
 	// Holds the data about each epic
 	vector<Epic> epicData;
 
-	int counts[6] = { 5, 10, 25, 50, 100, 200 };
+	for (int i = 10; i <= 200; i += 10) {
+		cout << "Generating size " << i << "..." << endl;
 
-	for (int i = 0; i < 6; ++i) {
-		numberOfStories = counts[i];
-		numberOfEpics = numberOfStories * 0.2;
-		numberOfSprints = counts[i];
+		numberOfStories = i;
+		numberOfEpics = min(1.0, numberOfStories * 0.2);
+		numberOfSprints = i;
 
 		// Generate some test data to optimise
 		storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
@@ -388,5 +389,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		sprintsFile.close();
+
+		cout << "Done" << endl;
 	}
 };

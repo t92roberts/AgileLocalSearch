@@ -4,8 +4,6 @@
 #include <map>
 #include <algorithm>
 #include <chrono>
-#include <math.h>
-#include <random>
 #include <queue>
 #include <fstream>
 #include <sstream>
@@ -709,8 +707,6 @@ public:
 
 		int ruinMode = 0; // 0 = radial, 1 = random
 
-		time_t start = time(NULL);
-
 		double temperature = DBL_MAX;
 		double coolingRate = 0.9;
 		double cooledTemperature = 1e-10;
@@ -851,34 +847,34 @@ int main(int argc, char* argv[]) {
 	// - Use CPLEX to find an initial feasible, complete solution?
 	
 	// A complete, feasible roadmap
-	cout << "Building an initial solution..." << endl;
+	//cout << "Building an initial solution..." << endl;
 	auto t_initialStart = chrono::high_resolution_clock::now();
 
 	Roadmap initialSolution = LNS::greedyInsertStories(storyData, Roadmap(storyData, sprintData));
 
-	auto t_initialEnd = chrono::high_resolution_clock::now();
-	cout << "Initial solution found in " << chrono::duration<double, std::milli>(t_initialEnd - t_initialStart).count() << " ms" << endl << endl;
+	//auto t_initialEnd = chrono::high_resolution_clock::now();
+	//cout << "Initial solution found in " << chrono::duration<double, std::milli>(t_initialEnd - t_initialStart).count() << " ms" << endl << endl;
 
-	cout << "Solving..." << endl;
-	auto t_solveStart = chrono::high_resolution_clock::now();
+	//cout << "Solving..." << endl;
+	//auto t_solveStart = chrono::high_resolution_clock::now();
 
 	Roadmap bestSolution = LNS::run(initialSolution);
 
 	auto t_solveEnd = chrono::high_resolution_clock::now();
 
-	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_solveStart).count() << " ms" << endl << endl;
+	//cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_solveStart).count() << " ms" << endl << endl;
 
-	double initialValue = initialSolution.calculateValue();
+	/*double initialValue = initialSolution.calculateValue();
 	double finalValue = bestSolution.calculateValue();
 	double increase = 100 * (finalValue - initialValue) / initialValue;
 
-	//cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
+	cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
 	cout << "Total weighted business value: " << finalValue << endl;
 
 	// Pretty printing data //////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
-	/*cout << endl << "----------------------------------------------------------------" << endl << endl;
+	cout << endl << "----------------------------------------------------------------" << endl << endl;
 
 	cout << endl << "Stories:" << endl << endl;
 
@@ -908,11 +904,14 @@ int main(int argc, char* argv[]) {
 	cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
 	cout << initialSolution.printSprintRoadmap();*/
 
-	cout << endl << "Best solution --------------------------------------------------" << endl << endl;
-	cout << bestSolution.printSprintRoadmap();
+	//cout << endl << "Best solution --------------------------------------------------" << endl << endl;
+	//cout << bestSolution.printSprintRoadmap();
 
 	//////////////////////////////////////////////////////////////////////////
 	
 	//cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
-	cout << "Total weighted business value: " << finalValue << endl;
+	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl << endl;
+	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
+	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
+	cout << "--------------------------------------------------------------------------------------------------------" << endl;
 }
