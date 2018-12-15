@@ -310,6 +310,22 @@ vector<Sprint> randomlyGenerateSprints(int numberOfSprints, int minCapacity, int
 }
 
 int main(int argc, char* argv[]) {
+	int dataSize;
+
+	switch (argc) {
+	case 2:
+		dataSize = stoi(argv[1]);
+
+		if (dataSize % 10 != 0) {
+			cout << "Size must be multiple of 10";
+			exit(0);
+		}
+
+		break;
+	default:
+		exit(0);
+	}
+
 	// Seed the random number generator
 	srand(time(NULL));
 
@@ -331,65 +347,63 @@ int main(int argc, char* argv[]) {
 	// Holds the data about each epic
 	vector<Epic> epicData;
 
-	for (int i = 10; i <= 100; i += 10) {
-		cout << "Generating size " << i << "..." << endl;
+	cout << "Generating size " << dataSize << "..." << endl;
 
-		numberOfStories = i;
-		numberOfEpics = max(1.0, numberOfStories * 0.2);
-		numberOfSprints = i;
+	numberOfStories = dataSize;
+	numberOfEpics = max(1.0, numberOfStories * 0.2);
+	numberOfSprints = dataSize;
 
-		// Generate some test data to optimise
-		storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
+	// Generate some test data to optimise
+	storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
 
-		// Epics
-		for (int j = 0; j < numberOfEpics; ++j) {
-			epicData.push_back(Epic(j));
-		}
-
-		// Add every story to a random epic
-		for (Story story : storyData) {
-			epicData[randomInt(0, epicData.size() - 1)].stories.push_back(story);
-		}
-
-		sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
-
-		ofstream storiesFile;
-		string storiesFileName = to_string(storyData.size()) + "_stories.csv";
-		storiesFile.open(storiesFileName);
-
-		storiesFile << "story_number,business_value,story_points,dependencies\n";
-
-		for (Story story : storyData) {
-			storiesFile << story.storyNumber << "," << story.businessValue << "," << story.storyPoints;
-			
-			if (story.dependencies.size() > 0)
-				storiesFile << ",";
-
-			for (int k = 0; k < story.dependencies.size(); ++k) {
-				int dependeeNumber = story.dependencies[k];
-
-				storiesFile << dependeeNumber;
-				if (k < story.dependencies.size() - 1)
-					storiesFile << ";";
-			}
-
-			storiesFile << "\n";
-		}
-
-		storiesFile.close();
-
-		ofstream sprintsFile;
-		string sprintsFileName = to_string(sprintData.size()) + "_sprints.csv";
-		sprintsFile.open(sprintsFileName);
-
-		sprintsFile << "sprint_number,sprint_capacity,sprint_bonus\n";
-
-		for (Sprint sprint : sprintData) {
-			sprintsFile << sprint.sprintNumber << "," << sprint.sprintCapacity << "," << sprint.sprintBonus << "\n";
-		}
-
-		sprintsFile.close();
-
-		cout << "Done" << endl;
+	// Epics
+	for (int j = 0; j < numberOfEpics; ++j) {
+		epicData.push_back(Epic(j));
 	}
+
+	// Add every story to a random epic
+	for (Story story : storyData) {
+		epicData[randomInt(0, epicData.size() - 1)].stories.push_back(story);
+	}
+
+	sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
+
+	ofstream storiesFile;
+	string storiesFileName = to_string(storyData.size()) + "_stories.csv";
+	storiesFile.open(storiesFileName);
+
+	storiesFile << "story_number,business_value,story_points,dependencies\n";
+
+	for (Story story : storyData) {
+		storiesFile << story.storyNumber << "," << story.businessValue << "," << story.storyPoints;
+			
+		if (story.dependencies.size() > 0)
+			storiesFile << ",";
+
+		for (int k = 0; k < story.dependencies.size(); ++k) {
+			int dependeeNumber = story.dependencies[k];
+
+			storiesFile << dependeeNumber;
+			if (k < story.dependencies.size() - 1)
+				storiesFile << ";";
+		}
+
+		storiesFile << "\n";
+	}
+
+	storiesFile.close();
+
+	ofstream sprintsFile;
+	string sprintsFileName = to_string(sprintData.size()) + "_sprints.csv";
+	sprintsFile.open(sprintsFileName);
+
+	sprintsFile << "sprint_number,sprint_capacity,sprint_bonus\n";
+
+	for (Sprint sprint : sprintData) {
+		sprintsFile << sprint.sprintNumber << "," << sprint.sprintCapacity << "," << sprint.sprintBonus << "\n";
+	}
+
+	sprintsFile.close();
+
+	cout << "Done" << endl;
 };

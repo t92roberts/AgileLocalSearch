@@ -711,6 +711,9 @@ public:
 		double cooledTemperature = 1e-10;
 
 		while (temperature > cooledTemperature) {
+			// Output to see convergence to optimal over time
+			//cout << bestSolution.calculateValue() << endl;
+
 			Roadmap temporarySolution;
 
 			double degreeOfDestruction;
@@ -718,12 +721,12 @@ public:
 			
 			if (ruinMode == 0) {
 				degreeOfDestruction = 0.25;
-				numberOfStoriesToRemove = max(1, (int)round(degreeOfDestruction * currentSolution.stories.size()));
+				numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 				temporarySolution = repair(radialRuin(currentSolution, numberOfStoriesToRemove));
 			}
 			else if (ruinMode == 1) {
 				degreeOfDestruction = 0.5;
-				numberOfStoriesToRemove = max(1, (int)round(degreeOfDestruction * currentSolution.stories.size()));
+				numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 				temporarySolution = repair(randomRuin(currentSolution, numberOfStoriesToRemove));
 			}
 
@@ -737,7 +740,6 @@ public:
 				bestSolution = temporarySolution;
 
 			temperature *= coolingRate;
-			
 		}
 
 		return bestSolution;
