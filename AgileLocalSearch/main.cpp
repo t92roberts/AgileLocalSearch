@@ -618,7 +618,6 @@ public:
 
 		// Remove the stories from their sprints
 		for (Story removedStory : removedStories) {
-			removedStory = completeSolution.stories[removedStory.storyNumber];
 			Sprint removedStorySprint = completeSolution.storyToSprint[removedStory];
 			completeSolution.removeStoryFromSprint(removedStory, removedStorySprint);
 		}
@@ -710,14 +709,16 @@ public:
 		double coolingRate = 0.9;
 		double cooledTemperature = 1e-10;
 
-		while (temperature > cooledTemperature) {
+		double degreeOfDestruction;
+		int numberOfStoriesToRemove;
+
+		int nonImprovingIterations = 0;
+
+		while (temperature > cooledTemperature && nonImprovingIterations < 2500) {
 			// Output to see convergence to optimal over time
 			//cout << bestSolution.calculateValue() << endl;
 
 			Roadmap temporarySolution;
-
-			double degreeOfDestruction;
-			int numberOfStoriesToRemove;
 			
 			if (ruinMode == 0) {
 				degreeOfDestruction = 0.25;
@@ -736,8 +737,12 @@ public:
 				currentSolution = temporarySolution;
 			}
 
-			if (temporarySolution.calculateValue() > bestSolution.calculateValue() && temporarySolution.isFeasible()) // Maximisation
+			if (temporarySolution.calculateValue() > bestSolution.calculateValue() && temporarySolution.isFeasible()) { // Maximisation
 				bestSolution = temporarySolution;
+				nonImprovingIterations = 0;
+			} else {
+				nonImprovingIterations += 1;
+			}
 
 			temperature *= coolingRate;
 		}
@@ -858,22 +863,39 @@ int main(int argc, char* argv[]) {
 
 	Roadmap bestSolution = LNS::run(initialSolution);
 
+	// Greedily assign any unassigned stories, if possible
+	if (!bestSolution.sprintToStories.empty()) {
+		Sprint unassignedSprint = sprintData[sprintData.size() - 1];
+		vector<Story> unassignedStories = bestSolution.sprintToStories[unassignedSprint];
+
+		// Remove the stories from their sprints
+		for (Story unassignedStory : unassignedStories) {
+			bestSolution.removeStoryFromSprint(unassignedStory, unassignedSprint);
+		}
+
+		sort(unassignedStories.begin(), unassignedStories.end(), StoryGreedySorting());
+		bestSolution = LNS::greedyInsertStories(unassignedStories, bestSolution);
+	}
+
+	// Output to see convergence to optimal over time
+	//cout << bestSolution.calculateValue() << endl;
+
 	auto t_solveEnd = chrono::high_resolution_clock::now();
 
 	//cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
-	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl << endl;
 	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
+	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl;
 	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
-	cout << "--------------------------------------------------------------------------------------------------------" << endl;
+	cout << "----------------------------------------" << endl;
 
 	// Pretty print solution /////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
-	/*cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
-	cout << initialSolution.printSprintRoadmap();
+	//cout << endl << "Initial solution -----------------------------------------------" << endl << endl;
+	//cout << initialSolution.printSprintRoadmap();
 
-	cout << endl << "Best solution --------------------------------------------------" << endl << endl;
-	cout << bestSolution.printSprintRoadmap();*/
+	//cout << endl << "Best solution --------------------------------------------------" << endl << endl;
+	//cout << bestSolution.printSprintRoadmap();
 
 	//////////////////////////////////////////////////////////////////////////
 }
