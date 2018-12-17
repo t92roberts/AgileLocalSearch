@@ -347,7 +347,7 @@ int main(int argc, char* argv[]) {
 	// Holds the data about each epic
 	vector<Epic> epicData;
 
-	cout << "Generating size " << dataSize << "..." << endl;
+	//cout << "Generating size " << dataSize << "..." << endl;
 
 	numberOfStories = dataSize;
 	numberOfEpics = max(1.0, numberOfStories * 0.2);
@@ -405,5 +405,5 @@ int main(int argc, char* argv[]) {
 
 	sprintsFile.close();
 
-	cout << "Done" << endl;
+	//cout << "Done" << endl;
 };

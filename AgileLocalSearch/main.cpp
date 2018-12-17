@@ -46,19 +46,16 @@ public:
 			string dependenciesString = "";
 
 			for (int i = 0; i < this->dependencies.size(); ++i) {
-				if (i == 0) {
+				if (i == 0)
 					dependenciesString += "Story " + to_string(this->dependencies[i]);
-				}
-				else {
+				else
 					dependenciesString += ", Story " + to_string(this->dependencies[i]);
-				}
 			}
 
 			return dependenciesString;
 		}
-		else {
+		else
 			return "None";
-		}
 	}
 
 	bool operator == (const Story& other) const {
@@ -82,49 +79,6 @@ public:
 			+ " (business value: " + to_string(businessValue)
 			+ ", story points: " + to_string(storyPoints)
 			+ ", dependencies: " + printDependencies() + ")";
-	}
-};
-
-class Epic {
-public:
-	int epicNumber;
-	vector<Story> stories;
-
-	Epic() {};
-
-	Epic(int epicNumber) {
-		this->epicNumber = epicNumber;
-	}
-
-	Epic(int epicNumber, vector<Story> stories) {
-		this->epicNumber = epicNumber;
-		this->stories = stories;
-	}
-
-	string printStories() {
-		if (this->stories.size() > 0) {
-			string storiesString = "";
-
-			for (int i = 0; i < this->stories.size(); ++i) {
-				if (i == 0) {
-					storiesString += "Story " + to_string(this->stories[i].storyNumber);
-				}
-				else {
-					storiesString += ", Story " + to_string(this->stories[i].storyNumber);
-				}
-			}
-
-			return storiesString;
-		}
-		else {
-			return "None";
-		}
-	}
-
-	string toString() {
-		return "Epic " + to_string(epicNumber)
-			+ " (stories: " + printStories()
-			+ ")";
 	}
 };
 
@@ -194,11 +148,9 @@ public:
 class Roadmap {
 public:
 	vector<Story> stories;
-	vector<Epic> epics;
 	vector<Sprint> sprints;
 
 	map<Story, Sprint> storyToSprint;
-	map<Story, Epic> storyToEpic;
 	map<Sprint, vector<Story>> sprintToStories;
 
 	Roadmap() {};
@@ -206,18 +158,6 @@ public:
 	Roadmap(vector<Story> stories, vector<Sprint> sprints) {
 		this->stories = stories;
 		this->sprints = sprints;
-	}
-
-	Roadmap(vector<Story> stories, vector<Epic> epics, vector<Sprint> sprints) {
-		this->stories = stories;
-		this->epics = epics;
-		this->sprints = sprints;
-
-		for (Epic epic : epics) {
-			for (Story story : epic.stories) {
-				storyToEpic[story] = epic;
-			}
-		}
 	}
 
 	bool validInsert(Story story, Sprint sprint) {
@@ -232,23 +172,21 @@ public:
 		// Check that each of the story's dependencies are assigned before the sprint
 		for (int dependeeNumber : story.dependencies) {
 			Story dependee = stories[dependeeNumber];
+			
 			// Only stories that are assigned to a sprint are in the map
-			if (storyToSprint.find(dependee) == storyToSprint.end()) {
+			if (storyToSprint.find(dependee) == storyToSprint.end())
 				// The dependee isn't assigned to a sprint
 				return false;
-			}
 
 			Sprint dependeeAssignedSprint = storyToSprint[dependee];
 			
-			if (dependeeAssignedSprint.sprintNumber == -1) {
-				// The dependee is assigned to the product backlog
+			// The dependee is assigned to the product backlog
+			if (dependeeAssignedSprint.sprintNumber == -1)
 				return false;
-			}
 			
-			if (sprint.sprintNumber <= dependeeAssignedSprint.sprintNumber) {
-				// The story is assigned to an earlier sprint than its dependee
+			// The story is assigned to an earlier sprint than its dependee
+			if (sprint.sprintNumber <= dependeeAssignedSprint.sprintNumber)
 				return false;
-			}
 		}
 
 		// The sprint doesn't get overloaded and the story's dependencies are satisfied
@@ -258,78 +196,13 @@ public:
 	int storyPointsAssignedToSprint(Sprint sprint) {
 		vector<Story> sprintStories = sprintToStories[sprint];
 
-		// Sum up the story points of all the stories assigned to the sprint
+		// Sum of the story points of all the stories assigned to the sprint
 		int assignedStoryPoints = 0;
-		for (Story story : sprintStories) {
+
+		for (Story story : sprintStories)
 			assignedStoryPoints += story.storyPoints;
-		}
 
 		return assignedStoryPoints;
-	}
-
-	vector<pair<Sprint, double>> sprintUtilisations() {
-		vector<pair<Sprint, double>> sprintUtilisations;
-
-		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
-			Sprint sprint = pair.first;
-
-			if (sprint.sprintNumber != -1) { // Don't check the capacity of the product backlog
-				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
-				double utilisation = (double)assignedStoryPoints / (double)sprint.sprintCapacity;
-
-				sprintUtilisations.push_back(make_pair(sprint, utilisation));
-			}
-		}
-
-		sort(sprintUtilisations.begin(), sprintUtilisations.end(), SprintDoublePairDescending());
-		return sprintUtilisations;
-	}
-
-	vector<pair<Story, double>> storyDependenciesViolated() {
-		vector<pair<Story, double>> storyDependenciesViolated;
-
-		for (pair<Story, Sprint> assignment : storyToSprint) {
-			Story story = assignment.first;
-			Sprint assignedSprint = assignment.second;
-
-			int dependenciesUnassigned = 0;
-
-			if (assignedSprint.sprintNumber != -1) { // Don't check stories assigned to the product backlog
-				for (int dependeeNumber : story.dependencies) {
-					Story dependee = stories[dependeeNumber];
-					Sprint dependeeAssignedSprint = storyToSprint[dependee];
-
-					// Only stories that are assigned to a sprint are in the map
-					if (storyToSprint.find(dependee) == storyToSprint.end()) {
-						// The dependee isn't assigned to a sprint
-						dependenciesUnassigned += 1;
-					}
-					else if (dependeeAssignedSprint.sprintNumber == -1) {
-						// The dependee is assigned to the product backlog
-						dependenciesUnassigned += 1;
-					}
-					else {
-						// Check where the story is assigned compared to its dependee
-						if (assignedSprint <= dependeeAssignedSprint)
-							// The story is assigned to an earlier sprint than its dependee
-							dependenciesUnassigned += 1;
-					}
-				}
-			}
-
-			double percentUnassigned;
-
-			// If a story has no dependencies, then it has no unassigned dependencies
-			if (story.dependencies.size() == 0)
-				percentUnassigned = 0;
-			else
-				percentUnassigned = (double)dependenciesUnassigned / (double)story.dependencies.size();
-
-			storyDependenciesViolated.push_back(make_pair(story, percentUnassigned));
-		}
-
-		sort(storyDependenciesViolated.begin(), storyDependenciesViolated.end(), StoryDoublePairDescending());
-		return storyDependenciesViolated;
 	}
 
 	void addStoryToSprint(Story story, Sprint sprint) {
@@ -354,7 +227,8 @@ public:
 			Story story = pair.first;
 			Sprint sprint = pair.second;
 
-			if (sprint.sprintNumber != -1) // Don't add value from stories assigned to the product backlog
+			// Don't add value from stories assigned to the product backlog
+			if (sprint.sprintNumber != -1)
 				totalValue += story.businessValue * sprint.sprintBonus;
 		}
 
@@ -365,7 +239,8 @@ public:
 		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
 			Sprint sprint = pair.first;
 
-			if (sprint.sprintNumber != -1) { // Don't check the capacity of the product backlog
+			// Don't check the capacity of the product backlog
+			if (sprint.sprintNumber != -1) {
 				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
 
 				// Check if the sprint is overloaded
@@ -384,7 +259,8 @@ public:
 			Story story = assignment.first;
 			Sprint assignedSprint = assignment.second;
 
-			if (assignedSprint.sprintNumber != -1) { // Don't check stories assigned to the product backlog
+			// Don't check stories assigned to the product backlog
+			if (assignedSprint.sprintNumber != -1) {
 				for (int dependeeNumber : story.dependencies) {
 					Story dependee = stories[dependeeNumber];
 					Sprint dependeeAssignedSprint = storyToSprint[dependee];
@@ -412,61 +288,6 @@ public:
 
 	bool isFeasible() {
 		return sprintCapacitiesSatisifed() && storyDependenciesSatisfied();
-	}
-
-	int numberOfSprintCapacitiesViolated() {
-		int counter = 0;
-
-		for (pair<Sprint, vector<Story>> pair : sprintToStories) {
-			Sprint sprint = pair.first;
-
-			if (sprint.sprintNumber != -1) { // Don't check the capacity of the product backlog
-				int assignedStoryPoints = storyPointsAssignedToSprint(sprint);
-
-				// Check if the sprint is overloaded
-				if (!sprint.withinCapacity(assignedStoryPoints))
-					// The story points assigned are not within the sprint's capacity
-					counter += 1;
-			}
-		}
-
-		// All sprints are within capacity
-		return counter;
-	}
-
-	int numberOfStoryDependenciesViolated() {
-		int counter = 0;
-
-		for (pair<Story, Sprint> assignment : storyToSprint) {
-			Story story = assignment.first;
-			Sprint assignedSprint = assignment.second;
-
-			if (assignedSprint.sprintNumber != -1) { // Don't check stories assigned to the product backlog
-				for (int dependeeNumber : story.dependencies) {
-					Story dependee = stories[dependeeNumber];
-					Sprint dependeeAssignedSprint = storyToSprint[dependee];
-
-					// Only stories that are assigned to a sprint are in the map
-					if (storyToSprint.find(dependee) == storyToSprint.end()) {
-						// The dependee isn't assigned to a sprint
-						counter += 1;
-					}
-					else if (dependeeAssignedSprint.sprintNumber == -1) {
-						// The dependee is assigned to the product backlog
-						counter += 1;
-					}
-					else {
-						// Check where the story is assigned compared to its dependee
-						if (assignedSprint <= dependeeAssignedSprint)
-							// The story is assigned to an earlier sprint than its dependee
-							counter += 1;
-					}
-				}
-			}
-		}
-
-		// All stories have their dependees assigned to an earlier sprint
-		return counter;
 	}
 
 	string printStoryRoadmap() {
@@ -546,20 +367,78 @@ vector<double> geometricSequence(double a, double r, double n) {
 	return sequence;
 }
 
-// Holds a partly-destroyed solution and a list of the stories that were removed
+// Represents moving a story from/to a sprint
+class Move {
+public:
+	Story story;
+	Sprint sprint;
+
+	Move() {};
+
+	Move(Story story, Sprint sprint) {
+		this->story = story;
+		this->sprint = sprint;
+	}
+
+	bool operator == (const Move& other) const {
+		return this->story == other.story && this->sprint == other.sprint;
+	}
+};
+
+// A partly-destroyed solution, a list of the stories that were removed, and the moves that removed them
 class DestroyedSolution {
 public:
 	Roadmap roadmap;
 	vector<Story> removedStories;
+	vector<Move> moves;
 
 	DestroyedSolution() {};
 
-	DestroyedSolution(Roadmap roadmap, vector<Story> removedStories) {
+	DestroyedSolution(Roadmap roadmap, vector<Story> removedStories, vector<Move> moves) {
 		this->roadmap = roadmap;
 		this->removedStories = removedStories;
+		this->moves = moves;
 	}
 };
 
+// A repaired solution and the list of moves that repaired it
+class RepairedSolution {
+public:
+	Roadmap roadmap;
+	vector<Move> moves;
+
+	RepairedSolution() {};
+
+	RepairedSolution(Roadmap roadmap, vector<Move> moves) {
+		this->roadmap = roadmap;
+		this->moves = moves;
+	}
+};
+
+// A Tabu list holding a list of banned moves
+class TabuList {
+public:
+	deque<Move> tabuList;
+	int tenure;
+
+	TabuList(int tenure) {
+		this->tenure = tenure;
+	}
+
+	void add(Move pair) {
+		tabuList.push_back(pair);
+
+		// Keep the tabu list to the given size
+		while (tabuList.size() > tenure)
+			tabuList.pop_front();
+	}
+
+	bool isTabu(Move pair) {
+		return find(tabuList.begin(), tabuList.end(), pair) != tabuList.end();
+	}
+};
+
+// Implements the Large Neighbourhood search algorithm
 class LNS {
 public:
 	LNS() {};
@@ -568,6 +447,7 @@ public:
 	// Adapted from:
 	// GeeksforGeeks. (2018). Breadth First Search or BFS for a Graph - GeeksforGeeks. [online] Available at: https://www.geeksforgeeks.org/breadth-first-search-or-bfs-for-a-graph/ [Accessed 9 Dec. 2018].
 	*/
+	// Adds stories to the list of removed stories by traversing the dependency graph in breadth-first order
 	static vector<Story> traverseDependenciesBF(Story story, Roadmap roadmap, vector<Story> removedStories, int numberOfStoriesToRemove) {
 		bool *visited = new bool[roadmap.stories.size()];
 
@@ -584,7 +464,7 @@ public:
 			story = queue.front();
 			queue.pop();
 
-			// Prevent removing the same story multiple times
+			// Only add the story if it's not already in the list of removed stories
 			if (find(removedStories.begin(), removedStories.end(), story) == removedStories.end())
 				removedStories.push_back(story);
 
@@ -601,18 +481,21 @@ public:
 		return removedStories;
 	}
 
+	// Removes the given number of stories and its dependencies
 	static DestroyedSolution radialRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
-		// A list of the stories removed from the solution
+		// The list of the stories removed from the solution
 		vector<Story> removedStories;
+		vector<Move> moves;
 
 		while (removedStories.size() < numberOfStoriesToRemove) {
 			Story randomStory;
 
-			// Prevent trying to remove the same story multiple times
+			// Keep trying to find a random story that hasn't already been added to the list
 			do {
 				randomStory = completeSolution.stories[randomInt(0, completeSolution.stories.size() - 1)];
 			} while (find(removedStories.begin(), removedStories.end(), randomStory) != removedStories.end());
 
+			// Add the story's dependencies to the list
 			removedStories = traverseDependenciesBF(randomStory, completeSolution, removedStories, numberOfStoriesToRemove);
 		}
 
@@ -620,24 +503,25 @@ public:
 		for (Story removedStory : removedStories) {
 			Sprint removedStorySprint = completeSolution.storyToSprint[removedStory];
 			completeSolution.removeStoryFromSprint(removedStory, removedStorySprint);
+
+			// Add to the list of moves (which will be checked against the tabu list later)
+			moves.push_back(Move(removedStory, removedStorySprint));
 		}
 
-		return DestroyedSolution(completeSolution, removedStories);
+		return DestroyedSolution(completeSolution, removedStories, moves);
 	}
 
 	// Randomly selects stories to remove
 	static DestroyedSolution randomRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
-		// TODO
-		// - Take a Tabu list as an input (to mitigate cycling)
-
-		// A list of the stories removed from the solution
+		// The list of the stories removed from the solution
 		vector<Story> removedStories;
+		vector<Move> moves;
 
 		// Keep removing stories until the required number have been removed
 		while (removedStories.size() < numberOfStoriesToRemove) {
 			Story randomStory;
 
-			// Prevent trying to remove the same story multiple times
+			// Keep trying to find a random story that hasn't already been added to the list
 			do {
 				randomStory = completeSolution.stories[randomInt(0, completeSolution.stories.size() - 1)];
 			} while (find(removedStories.begin(), removedStories.end(), randomStory) != removedStories.end());
@@ -645,53 +529,67 @@ public:
 
 			removedStories.push_back(randomStory);
 			completeSolution.removeStoryFromSprint(randomStory, randomStorySprint);
+
+			// Add to the list of moves (which will be checked against the tabu list later)
+			moves.push_back(Move(randomStory, randomStorySprint));
 		}
 
-		return DestroyedSolution(completeSolution, removedStories);
+		return DestroyedSolution(completeSolution, removedStories, moves);
 	}
 
-	static Roadmap greedyInsertStories(vector<Story> storiesToInsert, Roadmap roadmap) {
-		while (storiesToInsert.size () > 0) {
+	// Adds the list of stories to the earliest sprint where they will fit & have their dependencies fulfilled
+	static RepairedSolution greedyInsertStories(vector<Story> storiesToInsert, Roadmap roadmap) {
+		// The list of moves that repaired the destroyed solution
+		vector<Move> moves;
+
+		while (storiesToInsert.size() > 0) {
 			Story story = storiesToInsert[0];
-			// Greedily re-insert it into a sprint
+
+			// Greedily re-insert the story into a sprint
 			for (Sprint sprint : roadmap.sprints) {
-				if (sprint.sprintNumber == -1) {
-					// The loop has passed over every sprint and has reached the 'product backlog' sprint
+				if (sprint.sprintNumber == -1 || roadmap.validInsert(story, sprint)) {
 					roadmap.addStoryToSprint(story, sprint);
 					storiesToInsert.erase(remove(storiesToInsert.begin(), storiesToInsert.end(), story), storiesToInsert.end());
-					break; // Break out of traversing the sprints and move to the next story
-				}
-				else if (roadmap.validInsert(story, sprint)) {
-					// The story can fit into this sprint
-					roadmap.addStoryToSprint(story, sprint);
-					storiesToInsert.erase(remove(storiesToInsert.begin(), storiesToInsert.end(), story), storiesToInsert.end());
-					break; // Break out of traversing the sprints and move to the next story
+
+					// Add to the list of moves (which will be checked against the tabu list later)
+					moves.push_back(Move(story, sprint));
+
+					// Break out of traversing the sprints and move to the next story
+					break;
 				}
 			}
 		}
 
-		return roadmap;
+		return RepairedSolution(roadmap, moves);
 	}
 
 	// Repair a partly destroyed solution to a complete solution
-	static Roadmap repair(DestroyedSolution destroyedSolution) {
-		// TODO
-		// - Use CPLEX to find the optimal way to repair the partly-destroyed solution?
-
+	static RepairedSolution repair(DestroyedSolution destroyedSolution) {
 		sort(destroyedSolution.removedStories.begin(), destroyedSolution.removedStories.end(), StoryGreedySorting());
 		return greedyInsertStories(destroyedSolution.removedStories, destroyedSolution.roadmap);
 	}
 
 	// Returns whether the temporary solution should become the new current solution
-	static bool accept(Roadmap temporarySolution, Roadmap currentSolution, double temperature) {
-		double delta = (double) temporarySolution.calculateValue() - currentSolution.calculateValue();
+	static bool accept(RepairedSolution repairedSolution, int repairedSolutionValue, int currentSolutionValue, double temperature, TabuList *tabuList) {
+		double delta = repairedSolutionValue - currentSolutionValue;
 
-		if (delta > 0) // Accept improving moves
+		// Always accept an improving solution (part of the simulated annealing acceptance and tabu aspiration criteria)
+		if (delta > 0)
 			return true;
-		else if (exp(-1 * delta / temperature) > randomDouble(0, 1)) // Accept non-improving moves according to the temperature
+
+		// Check if any of the moves made during the repair are tabu
+		for (Move move : repairedSolution.moves) {
+			// Don't accept the repaired solution if one of the moves is tabu
+			if (tabuList->isTabu(move))
+				return false;
+		}
+		
+		// Accept non-improving moves with probability related to the annealing temperature
+		if (exp(-1 * delta / temperature) > randomDouble(0, 1))
 			return true;
-		else
-			return false;
+
+		// Didn't meet any of the expected criteria above, just reject the new solution
+		return false;
 	}
 
 	static Roadmap run(Roadmap currentSolution) {
@@ -702,46 +600,66 @@ public:
 		
 		// The best solution visited so far
 		Roadmap bestSolution = currentSolution;
+		int bestSolutionValue = bestSolution.calculateValue();
+		int currentSolutionValue = bestSolutionValue;
 
-		int ruinMode = 0; // 0 = radial, 1 = random
+		// Simulated annealing parameters
 
 		double temperature = DBL_MAX;
 		double coolingRate = 0.9;
 		double cooledTemperature = 1e-10;
 
-		double degreeOfDestruction;
-		int numberOfStoriesToRemove;
+		// Destroy and repair parameters
+		
+		int ruinMode = 0; // 0 = radial, 1 = random
+		double degreeOfDestruction = 0.25;
+		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
+
+		// Tabu search parameters
+		
+		double tabuTenurePercentage = degreeOfDestruction * 0.5;
+		int tabuTenure = max(1.0, round(tabuTenurePercentage * currentSolution.stories.size()));
+		TabuList tabuList(tabuTenure);
 
 		int nonImprovingIterations = 0;
 
-		while (temperature > cooledTemperature && nonImprovingIterations < 2500) {
+		while (temperature > cooledTemperature && nonImprovingIterations < 1000) {
 			// Output to see convergence to optimal over time
 			//cout << bestSolution.calculateValue() << endl;
 
-			Roadmap temporarySolution;
+			DestroyedSolution destroyedSolution;
+			RepairedSolution repairedSolution;
 			
 			if (ruinMode == 0) {
-				degreeOfDestruction = 0.25;
-				numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
-				temporarySolution = repair(radialRuin(currentSolution, numberOfStoriesToRemove));
+				destroyedSolution = radialRuin(currentSolution, numberOfStoriesToRemove);
+				repairedSolution = repair(destroyedSolution);
 			}
 			else if (ruinMode == 1) {
-				degreeOfDestruction = 0.5;
-				numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
-				temporarySolution = repair(randomRuin(currentSolution, numberOfStoriesToRemove));
+				destroyedSolution = randomRuin(currentSolution, numberOfStoriesToRemove);
+				repairedSolution = repair(destroyedSolution);
 			}
 
 			ruinMode = (ruinMode + 1) % 2;
 
-			if (accept(temporarySolution, currentSolution, temperature)) {
-				currentSolution = temporarySolution;
-			}
+			int repairedSolutionValue = repairedSolution.roadmap.calculateValue();
 
-			if (temporarySolution.calculateValue() > bestSolution.calculateValue() && temporarySolution.isFeasible()) { // Maximisation
-				bestSolution = temporarySolution;
-				nonImprovingIterations = 0;
-			} else {
-				nonImprovingIterations += 1;
+			if (accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, &tabuList)) {
+				currentSolution = repairedSolution.roadmap;
+				currentSolutionValue = repairedSolutionValue;
+
+				// Add the accepted moves to the tabu list:
+				// - moves made in the destroyed solution represent moving story A out of sprint B
+				// - adding move 'story A -> sprint B' prevents undoing the move
+				for (Move move : destroyedSolution.moves)
+					tabuList.add(move);
+
+				if (currentSolutionValue > bestSolutionValue && currentSolution.isFeasible()) { // Maximisation
+					bestSolution = currentSolution;
+					bestSolutionValue = currentSolutionValue;
+
+					nonImprovingIterations = 0;
+				} else
+					nonImprovingIterations += 1;
 			}
 
 			temperature *= coolingRate;
@@ -859,7 +777,7 @@ int main(int argc, char* argv[]) {
 	vector<Story> shuffledStories = storyData;
 	random_shuffle(shuffledStories.begin(), shuffledStories.end());
 
-	Roadmap initialSolution = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
+	Roadmap initialSolution = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData)).roadmap;
 
 	Roadmap bestSolution = LNS::run(initialSolution);
 
@@ -874,15 +792,15 @@ int main(int argc, char* argv[]) {
 		}
 
 		sort(unassignedStories.begin(), unassignedStories.end(), StoryGreedySorting());
-		bestSolution = LNS::greedyInsertStories(unassignedStories, bestSolution);
+		bestSolution = LNS::greedyInsertStories(unassignedStories, bestSolution).roadmap;
 	}
+
+	auto t_solveEnd = chrono::high_resolution_clock::now();
 
 	// Output to see convergence to optimal over time
 	//cout << bestSolution.calculateValue() << endl;
 
-	auto t_solveEnd = chrono::high_resolution_clock::now();
-
-	//cout << "Initial value: " << initialValue << ", final value: " << finalValue << " (" << nearbyint(increase) << "% improvement)" << endl;
+	cout << endl << "LNS" << endl;
 	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
 	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl;
 	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
@@ -898,4 +816,6 @@ int main(int argc, char* argv[]) {
 	//cout << bestSolution.printSprintRoadmap();
 
 	//////////////////////////////////////////////////////////////////////////
+
+	return 0;
 }
