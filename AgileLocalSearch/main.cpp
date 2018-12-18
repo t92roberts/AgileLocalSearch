@@ -383,6 +383,15 @@ public:
 	bool operator == (const Move& other) const {
 		return this->story == other.story && this->sprint == other.sprint;
 	}
+
+	bool operator < (const Move& other) const {
+		if (this->story < other.story)
+			return true;
+		else if (this->story == other.story && this->sprint < other.sprint)
+			return true;
+		else
+			return false;
+	}
 };
 
 // A partly-destroyed solution, a list of the stories that were removed, and the moves that removed them
@@ -415,26 +424,41 @@ public:
 	}
 };
 
-// A Tabu list holding a list of banned moves
+// A Tabu list holding the banned moves
 class TabuList {
 public:
-	deque<Move> tabuList;
+	map<Move, int> tabuList;
 	int tenure;
 
 	TabuList(int tenure) {
 		this->tenure = tenure;
 	}
 
-	void add(Move pair) {
-		tabuList.push_back(pair);
-
-		// Keep the tabu list to the given size
-		while (tabuList.size() > tenure)
-			tabuList.pop_front();
+	void add(Move move, int currentIteration) {
+		// Store the iteration when the move became tabu
+		tabuList[move] = currentIteration;
 	}
 
-	bool isTabu(Move pair) {
-		return find(tabuList.begin(), tabuList.end(), pair) != tabuList.end();
+	bool isTabu(Move move, int currentIteration) {
+		map<Move, int>::iterator movePositionIterator = tabuList.find(move);
+
+		// Check if the move is in the map
+		if (movePositionIterator != tabuList.end()) {
+			// The move is in the map, check if its tenure is over
+			if (currentIteration - tenure > tabuList[move]) {
+				// The move's tenure has expired so it's not tabu - remove it from the map and return
+				tabuList.erase(movePositionIterator);
+				return false;
+			}
+			else {
+				// The move is tabu
+				return true;
+			}
+		}
+		else {
+			// It's not in the map so it's not tabu
+			return false;
+		}
 	}
 };
 
@@ -570,17 +594,17 @@ public:
 	}
 
 	// Returns whether the temporary solution should become the new current solution
-	static bool accept(RepairedSolution repairedSolution, int repairedSolutionValue, int currentSolutionValue, double temperature, TabuList *tabuList) {
+	static bool accept(RepairedSolution repairedSolution, int repairedSolutionValue, int currentSolutionValue, double temperature, int currentIteration, TabuList *tabuList) {
 		double delta = repairedSolutionValue - currentSolutionValue;
 
 		// Always accept an improving solution (part of the simulated annealing acceptance and tabu aspiration criteria)
-		if (delta > 0)
+		if (delta >= 0)
 			return true;
 
 		// Check if any of the moves made during the repair are tabu
 		for (Move move : repairedSolution.moves) {
 			// Don't accept the repaired solution if one of the moves is tabu
-			if (tabuList->isTabu(move))
+			if (tabuList->isTabu(move, currentIteration))
 				return false;
 		}
 		
@@ -592,12 +616,12 @@ public:
 		return false;
 	}
 
-	static Roadmap run(Roadmap currentSolution) {
+	static Roadmap run(Roadmap currentSolution, int maxIterations, TabuList *tabuList) {
 		// TODO
-		// - Dynamically set the number of elements to destroy
-		//		- if the previous n iterations didn't improve, increase destruction by 1
-		//		- cap the maximum destruction
-		
+		// - Dynamically set the number of elements to destroy and the Tabu tenure
+		//		- if the previous n iterations didn't improve, increase by 1
+		//		- cap the maximum
+
 		// The best solution visited so far
 		Roadmap bestSolution = currentSolution;
 		int bestSolutionValue = bestSolution.calculateValue();
@@ -607,7 +631,7 @@ public:
 
 		double temperature = DBL_MAX;
 		double coolingRate = 0.9;
-		double cooledTemperature = 1e-10;
+		//double cooledTemperature = 1e-10;
 
 		// Destroy and repair parameters
 		
@@ -615,15 +639,7 @@ public:
 		double degreeOfDestruction = 0.25;
 		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 
-		// Tabu search parameters
-		
-		double tabuTenurePercentage = degreeOfDestruction * 0.5;
-		int tabuTenure = max(1.0, round(tabuTenurePercentage * currentSolution.stories.size()));
-		TabuList tabuList(tabuTenure);
-
-		int nonImprovingIterations = 0;
-
-		while (temperature > cooledTemperature && nonImprovingIterations < 1000) {
+		for (int currentIteration = 0; currentIteration < maxIterations; ++currentIteration) {
 			// Output to see convergence to optimal over time
 			//cout << bestSolution.calculateValue() << endl;
 
@@ -643,7 +659,7 @@ public:
 
 			int repairedSolutionValue = repairedSolution.roadmap.calculateValue();
 
-			if (accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, &tabuList)) {
+			if (accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, currentIteration, tabuList)) {
 				currentSolution = repairedSolution.roadmap;
 				currentSolutionValue = repairedSolutionValue;
 
@@ -651,15 +667,12 @@ public:
 				// - moves made in the destroyed solution represent moving story A out of sprint B
 				// - adding move 'story A -> sprint B' prevents undoing the move
 				for (Move move : destroyedSolution.moves)
-					tabuList.add(move);
+					tabuList->add(move, currentIteration);
 
 				if (currentSolutionValue > bestSolutionValue && currentSolution.isFeasible()) { // Maximisation
 					bestSolution = currentSolution;
 					bestSolutionValue = currentSolutionValue;
-
-					nonImprovingIterations = 0;
-				} else
-					nonImprovingIterations += 1;
+				}
 			}
 
 			temperature *= coolingRate;
@@ -774,25 +787,40 @@ int main(int argc, char* argv[]) {
 	//cout << "Building an initial solution..." << endl;
 	auto t_initialStart = chrono::high_resolution_clock::now();
 
+	int maxIterations = 10000;
+
+	// Tabu search parameters
+
+	double tenureRatio = 0.001;
+	int tabuTenure = max(1.0, maxIterations * tenureRatio);
+	TabuList tabuList(tabuTenure);
+
 	vector<Story> shuffledStories = storyData;
 	random_shuffle(shuffledStories.begin(), shuffledStories.end());
 
-	Roadmap initialSolution = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData)).roadmap;
+	RepairedSolution initialSolution = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
+	
+	// Add the intial assignments to the tabu list at iteration 0
+	for (Move move : initialSolution.moves)
+		tabuList.add(move, 0);
 
-	Roadmap bestSolution = LNS::run(initialSolution);
+	Roadmap bestSolution = LNS::run(initialSolution.roadmap, maxIterations, &tabuList);
 
 	// Greedily assign any unassigned stories, if possible
 	if (!bestSolution.sprintToStories.empty()) {
 		Sprint unassignedSprint = sprintData[sprintData.size() - 1];
 		vector<Story> unassignedStories = bestSolution.sprintToStories[unassignedSprint];
 
-		// Remove the stories from their sprints
-		for (Story unassignedStory : unassignedStories) {
-			bestSolution.removeStoryFromSprint(unassignedStory, unassignedSprint);
-		}
+		// If there are stories assigned to the backlog, try to assign them greedily
+		if (!unassignedStories.empty()) {
+			// Remove the stories from the 'backlog' sprint
+			for (Story unassignedStory : unassignedStories) {
+				bestSolution.removeStoryFromSprint(unassignedStory, unassignedSprint);
+			}
 
-		sort(unassignedStories.begin(), unassignedStories.end(), StoryGreedySorting());
-		bestSolution = LNS::greedyInsertStories(unassignedStories, bestSolution).roadmap;
+			sort(unassignedStories.begin(), unassignedStories.end(), StoryGreedySorting());
+			bestSolution = LNS::greedyInsertStories(unassignedStories, bestSolution).roadmap;
+		}
 	}
 
 	auto t_solveEnd = chrono::high_resolution_clock::now();
