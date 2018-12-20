@@ -630,8 +630,11 @@ public:
 		// Simulated annealing parameters
 
 		double temperature = DBL_MAX;
-		double coolingRate = 0.9;
-		//double cooledTemperature = 1e-10;
+		double coolingRate = 0.95;
+		double cooledTemperature = 1e-10;
+
+		int nonImprovingIterations = 0;
+		int maxNonImprovingIterations = maxIterations * 0.25;
 
 		// Destroy and repair parameters
 		
@@ -639,21 +642,20 @@ public:
 		double degreeOfDestruction = 0.25;
 		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 
-		for (int currentIteration = 0; currentIteration < maxIterations; ++currentIteration) {
+		for (int currentIteration = 1; temperature > cooledTemperature && nonImprovingIterations < maxNonImprovingIterations; ++currentIteration) {
 			// Output to see convergence to optimal over time
-			//cout << bestSolution.calculateValue() << endl;
+			//cout << bestSolutionValue << endl;
 
 			DestroyedSolution destroyedSolution;
-			RepairedSolution repairedSolution;
 			
 			if (ruinMode == 0) {
 				destroyedSolution = radialRuin(currentSolution, numberOfStoriesToRemove);
-				repairedSolution = repair(destroyedSolution);
 			}
 			else if (ruinMode == 1) {
 				destroyedSolution = randomRuin(currentSolution, numberOfStoriesToRemove);
-				repairedSolution = repair(destroyedSolution);
 			}
+
+			RepairedSolution repairedSolution = repair(destroyedSolution);
 
 			ruinMode = (ruinMode + 1) % 2;
 
@@ -663,7 +665,7 @@ public:
 				currentSolution = repairedSolution.roadmap;
 				currentSolutionValue = repairedSolutionValue;
 
-				// Add the accepted moves to the tabu list:
+				// Update the tabu list:
 				// - moves made in the destroyed solution represent moving story A out of sprint B
 				// - adding move 'story A -> sprint B' prevents undoing the move
 				for (Move move : destroyedSolution.moves)
@@ -672,11 +674,27 @@ public:
 				if (currentSolutionValue > bestSolutionValue && currentSolution.isFeasible()) { // Maximisation
 					bestSolution = currentSolution;
 					bestSolutionValue = currentSolutionValue;
+
+					//cout << "Non-improving: " << nonImprovingIterations;
+					//cout << "\t\tBest value: " << bestSolutionValue << endl;;
+					//cout << "\t\tTenure: " << tabuList->tenure << endl;
+
+					nonImprovingIterations = 0;
 				}
+				else {
+					++nonImprovingIterations;
+				}
+			}
+			else {
+				++nonImprovingIterations;
 			}
 
 			temperature *= coolingRate;
 		}
+
+		//cout << "Non-improving: " << nonImprovingIterations;
+		//cout << "\t\tBest value: " << bestSolutionValue << endl << endl;
+		//cout << "Iterations: " << currentIteration << endl;
 
 		return bestSolution;
 	}
@@ -787,24 +805,25 @@ int main(int argc, char* argv[]) {
 	//cout << "Building an initial solution..." << endl;
 	auto t_initialStart = chrono::high_resolution_clock::now();
 
-	int maxIterations = 10000;
+	int maxIterations = 14000;
 
 	// Tabu search parameters
 
 	double tenureRatio = 0.001;
-	int tabuTenure = max(1.0, maxIterations * tenureRatio);
+	int tabuTenure = maxIterations * tenureRatio;
 	TabuList tabuList(tabuTenure);
 
 	vector<Story> shuffledStories = storyData;
 	random_shuffle(shuffledStories.begin(), shuffledStories.end());
 
-	RepairedSolution initialSolution = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
+	RepairedSolution firstAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
+	Roadmap initialSolution = firstAssignment.roadmap;
 	
 	// Add the intial assignments to the tabu list at iteration 0
-	for (Move move : initialSolution.moves)
+	for (Move move : firstAssignment.moves)
 		tabuList.add(move, 0);
 
-	Roadmap bestSolution = LNS::run(initialSolution.roadmap, maxIterations, &tabuList);
+	Roadmap bestSolution = LNS::run(initialSolution, maxIterations, &tabuList);
 
 	// Greedily assign any unassigned stories, if possible
 	if (!bestSolution.sprintToStories.empty()) {
@@ -825,15 +844,6 @@ int main(int argc, char* argv[]) {
 
 	auto t_solveEnd = chrono::high_resolution_clock::now();
 
-	// Output to see convergence to optimal over time
-	//cout << bestSolution.calculateValue() << endl;
-
-	cout << endl << "LNS" << endl;
-	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
-	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl;
-	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
-	cout << "----------------------------------------" << endl;
-
 	// Pretty print solution /////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
@@ -844,6 +854,15 @@ int main(int argc, char* argv[]) {
 	//cout << bestSolution.printSprintRoadmap();
 
 	//////////////////////////////////////////////////////////////////////////
+
+	// Output to see convergence to optimal over time
+	//cout << bestSolution.calculateValue() << endl;
+
+	cout << endl << "LNS" << endl;
+	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
+	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl;
+	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
+	cout << "----------------------------------------" << endl;
 
 	return 0;
 }
