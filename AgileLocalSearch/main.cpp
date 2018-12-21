@@ -616,7 +616,7 @@ public:
 		return false;
 	}
 
-	static Roadmap run(Roadmap currentSolution, int maxIterations, TabuList *tabuList) {
+	static Roadmap run(Roadmap currentSolution, TabuList *tabuList) {
 		// TODO
 		// - Dynamically set the number of elements to destroy and the Tabu tenure
 		//		- if the previous n iterations didn't improve, increase by 1
@@ -629,12 +629,15 @@ public:
 
 		// Simulated annealing parameters
 
-		double temperature = DBL_MAX;
-		double coolingRate = 0.95;
-		double cooledTemperature = 1e-10;
+		double initialTemperature = DBL_MAX;
+		double temperature = initialTemperature;
+		double coolingRate = 0.9;
+		//double cooledTemperature = 1e-10;
 
+		int maxIterations = 15000;
+		
 		int nonImprovingIterations = 0;
-		int maxNonImprovingIterations = maxIterations * 0.25;
+		int maxNonImprovingIterations = tabuList->tenure * 2;
 
 		// Destroy and repair parameters
 		
@@ -642,9 +645,25 @@ public:
 		double degreeOfDestruction = 0.25;
 		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 
-		for (int currentIteration = 1; temperature > cooledTemperature && nonImprovingIterations < maxNonImprovingIterations; ++currentIteration) {
+		for (int currentIteration = 1; currentIteration < maxIterations; ++currentIteration) {
 			// Output to see convergence to optimal over time
 			//cout << bestSolutionValue << endl;
+
+			// Random restart when the search stagnates
+			if (nonImprovingIterations > maxNonImprovingIterations) {
+				nonImprovingIterations = 0;
+
+				vector<Story> shuffledStories = currentSolution.stories;
+				random_shuffle(shuffledStories.begin(), shuffledStories.end());
+
+				RepairedSolution randomAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(currentSolution.stories, currentSolution.sprints));
+				currentSolution = randomAssignment.roadmap;
+				currentSolutionValue = currentSolution.calculateValue();
+
+				// Add the initial assignments to the tabu list
+				for (Move move : randomAssignment.moves)
+					tabuList->add(move, currentIteration);
+			}
 
 			DestroyedSolution destroyedSolution;
 			
@@ -674,11 +693,7 @@ public:
 				if (currentSolutionValue > bestSolutionValue && currentSolution.isFeasible()) { // Maximisation
 					bestSolution = currentSolution;
 					bestSolutionValue = currentSolutionValue;
-
-					//cout << "Non-improving: " << nonImprovingIterations;
-					//cout << "\t\tBest value: " << bestSolutionValue << endl;;
-					//cout << "\t\tTenure: " << tabuList->tenure << endl;
-
+					
 					nonImprovingIterations = 0;
 				}
 				else {
@@ -692,9 +707,7 @@ public:
 			temperature *= coolingRate;
 		}
 
-		//cout << "Non-improving: " << nonImprovingIterations;
-		//cout << "\t\tBest value: " << bestSolutionValue << endl << endl;
-		//cout << "Iterations: " << currentIteration << endl;
+		//cout << "\tBest: " << bestSolutionValue << endl;
 
 		return bestSolution;
 	}
@@ -805,12 +818,9 @@ int main(int argc, char* argv[]) {
 	//cout << "Building an initial solution..." << endl;
 	auto t_initialStart = chrono::high_resolution_clock::now();
 
-	int maxIterations = 14000;
-
 	// Tabu search parameters
 
-	double tenureRatio = 0.001;
-	int tabuTenure = maxIterations * tenureRatio;
+	int tabuTenure = storyData.size() * sprintData.size() * 0.05;
 	TabuList tabuList(tabuTenure);
 
 	vector<Story> shuffledStories = storyData;
@@ -819,11 +829,17 @@ int main(int argc, char* argv[]) {
 	RepairedSolution firstAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
 	Roadmap initialSolution = firstAssignment.roadmap;
 	
-	// Add the intial assignments to the tabu list at iteration 0
+	// Add the initial assignments to the tabu list at iteration 0
 	for (Move move : firstAssignment.moves)
 		tabuList.add(move, 0);
 
-	Roadmap bestSolution = LNS::run(initialSolution, maxIterations, &tabuList);
+	// Start the search ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	Roadmap bestSolution = LNS::run(initialSolution, &tabuList);
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// Greedily assign any unassigned stories, if possible
 	if (!bestSolution.sprintToStories.empty()) {
