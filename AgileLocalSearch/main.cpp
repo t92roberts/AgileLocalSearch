@@ -395,15 +395,15 @@ public:
 };
 
 // A partly-destroyed solution, a list of the stories that were removed, and the moves that removed them
-class DestroyedSolution {
+class DestroyedRoadmap {
 public:
 	Roadmap roadmap;
 	vector<Story> removedStories;
 	vector<Move> moves;
 
-	DestroyedSolution() {};
+	DestroyedRoadmap() {};
 
-	DestroyedSolution(Roadmap roadmap, vector<Story> removedStories, vector<Move> moves) {
+	DestroyedRoadmap(Roadmap roadmap, vector<Story> removedStories, vector<Move> moves) {
 		this->roadmap = roadmap;
 		this->removedStories = removedStories;
 		this->moves = moves;
@@ -411,14 +411,14 @@ public:
 };
 
 // A repaired solution and the list of moves that repaired it
-class RepairedSolution {
+class RepairedRoadmap {
 public:
 	Roadmap roadmap;
 	vector<Move> moves;
 
-	RepairedSolution() {};
+	RepairedRoadmap() {};
 
-	RepairedSolution(Roadmap roadmap, vector<Move> moves) {
+	RepairedRoadmap(Roadmap roadmap, vector<Move> moves) {
 		this->roadmap = roadmap;
 		this->moves = moves;
 	}
@@ -506,7 +506,7 @@ public:
 	}
 
 	// Removes the given number of stories and its dependencies
-	static DestroyedSolution radialRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
+	static DestroyedRoadmap radialRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
 		// The list of the stories removed from the solution
 		vector<Story> removedStories;
 		vector<Move> moves;
@@ -532,11 +532,11 @@ public:
 			moves.push_back(Move(removedStory, removedStorySprint));
 		}
 
-		return DestroyedSolution(completeSolution, removedStories, moves);
+		return DestroyedRoadmap(completeSolution, removedStories, moves);
 	}
 
 	// Randomly selects stories to remove
-	static DestroyedSolution randomRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
+	static DestroyedRoadmap randomRuin(Roadmap completeSolution, int numberOfStoriesToRemove) {
 		// The list of the stories removed from the solution
 		vector<Story> removedStories;
 		vector<Move> moves;
@@ -558,11 +558,11 @@ public:
 			moves.push_back(Move(randomStory, randomStorySprint));
 		}
 
-		return DestroyedSolution(completeSolution, removedStories, moves);
+		return DestroyedRoadmap(completeSolution, removedStories, moves);
 	}
 
 	// Adds the list of stories to the earliest sprint where they will fit & have their dependencies fulfilled
-	static RepairedSolution greedyInsertStories(vector<Story> storiesToInsert, Roadmap roadmap) {
+	static RepairedRoadmap greedyInsertStories(vector<Story> storiesToInsert, Roadmap roadmap) {
 		// The list of moves that repaired the destroyed solution
 		vector<Move> moves;
 
@@ -584,17 +584,17 @@ public:
 			}
 		}
 
-		return RepairedSolution(roadmap, moves);
+		return RepairedRoadmap(roadmap, moves);
 	}
 
 	// Repair a partly destroyed solution to a complete solution
-	static RepairedSolution repair(DestroyedSolution destroyedSolution) {
+	static RepairedRoadmap repair(DestroyedRoadmap destroyedSolution) {
 		sort(destroyedSolution.removedStories.begin(), destroyedSolution.removedStories.end(), StoryGreedySorting());
 		return greedyInsertStories(destroyedSolution.removedStories, destroyedSolution.roadmap);
 	}
 
 	// Returns whether the temporary solution should become the new current solution
-	static bool accept(RepairedSolution repairedSolution, int repairedSolutionValue, int currentSolutionValue, double temperature, int currentIteration, TabuList *tabuList) {
+	static bool accept(RepairedRoadmap repairedSolution, int repairedSolutionValue, int currentSolutionValue, double temperature, int currentIteration, TabuList *tabuList) {
 		double delta = repairedSolutionValue - currentSolutionValue;
 
 		// Always accept an improving solution (part of the simulated annealing acceptance and tabu aspiration criteria)
@@ -656,7 +656,7 @@ public:
 				vector<Story> shuffledStories = currentSolution.stories;
 				random_shuffle(shuffledStories.begin(), shuffledStories.end());
 
-				RepairedSolution randomAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(currentSolution.stories, currentSolution.sprints));
+				RepairedRoadmap randomAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(currentSolution.stories, currentSolution.sprints));
 				currentSolution = randomAssignment.roadmap;
 				currentSolutionValue = currentSolution.calculateValue();
 
@@ -665,7 +665,7 @@ public:
 					tabuList->add(move, currentIteration);
 			}
 
-			DestroyedSolution destroyedSolution;
+			DestroyedRoadmap destroyedSolution;
 			
 			if (ruinMode == 0) {
 				destroyedSolution = radialRuin(currentSolution, numberOfStoriesToRemove);
@@ -674,7 +674,7 @@ public:
 				destroyedSolution = randomRuin(currentSolution, numberOfStoriesToRemove);
 			}
 
-			RepairedSolution repairedSolution = repair(destroyedSolution);
+			RepairedRoadmap repairedSolution = repair(destroyedSolution);
 
 			ruinMode = (ruinMode + 1) % 2;
 
@@ -820,13 +820,15 @@ int main(int argc, char* argv[]) {
 
 	// Tabu search parameters
 
-	int tabuTenure = storyData.size() * sprintData.size() * 0.05;
+	int possibleMoves = storyData.size() * (sprintData.size() - 1);
+
+	int tabuTenure = possibleMoves * 0.05;
 	TabuList tabuList(tabuTenure);
 
 	vector<Story> shuffledStories = storyData;
 	random_shuffle(shuffledStories.begin(), shuffledStories.end());
-
-	RepairedSolution firstAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
+	RepairedRoadmap firstAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
+	
 	Roadmap initialSolution = firstAssignment.roadmap;
 	
 	// Add the initial assignments to the tabu list at iteration 0
