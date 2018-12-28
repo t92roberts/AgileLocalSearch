@@ -624,8 +624,12 @@ public:
 
 		// The best solution visited so far
 		Roadmap bestSolution = currentSolution;
-		int bestSolutionValue = bestSolution.calculateValue();
-		int currentSolutionValue = bestSolutionValue;
+		double bestSolutionValue = bestSolution.calculateValue();
+		double currentSolutionValue = bestSolutionValue;
+
+		double previousBestSolutionValue = 0;
+		double valueImprovement = DBL_MAX;
+		double valueImprovementThreshold = 0.003;
 
 		// Simulated annealing parameters
 
@@ -634,24 +638,26 @@ public:
 		double coolingRate = 0.9;
 		//double cooledTemperature = 1e-10;
 
-		int maxIterations = 15000;
+		int maxIterations = 10000;
 		
-		int nonImprovingIterations = 0;
-		int maxNonImprovingIterations = tabuList->tenure * 2;
+		int runNonImprovingIterations = 0;
+		int maxRunNonImprovingIterations = tabuList->tenure * 2;
 
-		// Destroy and repair parameters
-		
+		int globalNonImprovingIterations = 0;
+		int maxGlobalNonImprovingIterations = maxIterations / 3;
+
 		int ruinMode = 0; // 0 = radial, 1 = random
 		double degreeOfDestruction = 0.25;
 		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 
-		for (int currentIteration = 1; currentIteration < maxIterations; ++currentIteration) {
+		for (int currentIteration = 1; currentIteration < maxIterations && globalNonImprovingIterations < maxGlobalNonImprovingIterations; ++currentIteration) {
 			// Output to see convergence to optimal over time
 			//cout << bestSolutionValue << endl;
 
 			// Random restart when the search stagnates
-			if (nonImprovingIterations > maxNonImprovingIterations) {
-				nonImprovingIterations = 0;
+			if (runNonImprovingIterations > maxRunNonImprovingIterations) {
+				runNonImprovingIterations = 0;
+				temperature = initialTemperature;
 
 				vector<Story> shuffledStories = currentSolution.stories;
 				random_shuffle(shuffledStories.begin(), shuffledStories.end());
@@ -691,17 +697,23 @@ public:
 					tabuList->add(move, currentIteration);
 
 				if (currentSolutionValue > bestSolutionValue && currentSolution.isFeasible()) { // Maximisation
+					valueImprovement = abs(100 * (1 - currentSolutionValue / previousBestSolutionValue));
+
+					previousBestSolutionValue = currentSolutionValue;
 					bestSolution = currentSolution;
 					bestSolutionValue = currentSolutionValue;
-					
-					nonImprovingIterations = 0;
+
+					runNonImprovingIterations = 0;
+					globalNonImprovingIterations = 0;
 				}
 				else {
-					++nonImprovingIterations;
+					++runNonImprovingIterations;
+					++globalNonImprovingIterations;
 				}
 			}
 			else {
-				++nonImprovingIterations;
+				++runNonImprovingIterations;
+				++globalNonImprovingIterations;
 			}
 
 			temperature *= coolingRate;
@@ -820,7 +832,7 @@ int main(int argc, char* argv[]) {
 
 	// Tabu search parameters
 
-	int possibleMoves = storyData.size() * (sprintData.size() - 1);
+	double possibleMoves = storyData.size() * sprintData.size();
 
 	int tabuTenure = possibleMoves * 0.05;
 	TabuList tabuList(tabuTenure);
