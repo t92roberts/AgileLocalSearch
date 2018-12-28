@@ -627,10 +627,6 @@ public:
 		double bestSolutionValue = bestSolution.calculateValue();
 		double currentSolutionValue = bestSolutionValue;
 
-		double previousBestSolutionValue = 0;
-		double valueImprovement = DBL_MAX;
-		double valueImprovementThreshold = 0.003;
-
 		// Simulated annealing parameters
 
 		double initialTemperature = DBL_MAX;
@@ -638,19 +634,17 @@ public:
 		double coolingRate = 0.9;
 		//double cooledTemperature = 1e-10;
 
-		int maxIterations = 10000;
+		int possibleMoves = currentSolution.stories.size() * currentSolution.sprints.size();
+		int maxIterations = 3 * possibleMoves;
 		
 		int runNonImprovingIterations = 0;
 		int maxRunNonImprovingIterations = tabuList->tenure * 2;
-
-		int globalNonImprovingIterations = 0;
-		int maxGlobalNonImprovingIterations = maxIterations / 3;
 
 		int ruinMode = 0; // 0 = radial, 1 = random
 		double degreeOfDestruction = 0.25;
 		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 
-		for (int currentIteration = 1; currentIteration < maxIterations && globalNonImprovingIterations < maxGlobalNonImprovingIterations; ++currentIteration) {
+		for (int currentIteration = 1; currentIteration < maxIterations; ++currentIteration) {
 			// Output to see convergence to optimal over time
 			//cout << bestSolutionValue << endl;
 
@@ -697,23 +691,17 @@ public:
 					tabuList->add(move, currentIteration);
 
 				if (currentSolutionValue > bestSolutionValue && currentSolution.isFeasible()) { // Maximisation
-					valueImprovement = abs(100 * (1 - currentSolutionValue / previousBestSolutionValue));
-
-					previousBestSolutionValue = currentSolutionValue;
 					bestSolution = currentSolution;
 					bestSolutionValue = currentSolutionValue;
 
 					runNonImprovingIterations = 0;
-					globalNonImprovingIterations = 0;
 				}
 				else {
 					++runNonImprovingIterations;
-					++globalNonImprovingIterations;
 				}
 			}
 			else {
 				++runNonImprovingIterations;
-				++globalNonImprovingIterations;
 			}
 
 			temperature *= coolingRate;
