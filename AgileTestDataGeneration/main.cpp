@@ -263,32 +263,29 @@ vector<Story> randomlyGenerateStories(int numberOfStories, int minBusinessValue,
 		// (can't force a specific number of dependencies as it might create cycles in the graph of dependencies between stories)
 		int maxNumberOfDependencies = randomIntDiscreteDistribution(probabilities);
 
-		for (int j = 0; j < maxNumberOfDependencies; ++j) {
+		// Used to randomly select stories without replacement
+		vector<int> storyNumbers;
+
+		for (int num = 0; num < numberOfStories; ++num) {
+			if (num != storyData[i].storyNumber)
+				storyNumbers.push_back(num);
+		}
+
+		for (int j = 0; j < maxNumberOfDependencies && storyNumbers.size() > 0; ++j) {
 			// Pick a random story as a potential dependency of story i
-			int potentialDependee = randomInt(0, numberOfStories - 1);
-
-			// Check if the dependency is the same as story i
-			bool isSelfLoop = potentialDependee == storyData[i].storyNumber;
-
-			// Check if the dependency is already a dependency of story i
-			bool isAlreadyDependency = find(storyData[i].dependencies.begin(), storyData[i].dependencies.end(), potentialDependee) != storyData[i].dependencies.end();
-
-			// Retry with another random story
-			if (isSelfLoop || isAlreadyDependency) {
-				--j;
-				continue;
-			}
-
+			int potentialDependee = storyNumbers[randomInt(0, storyNumbers.size() - 1)];
+			
 			// Add the dependency to story i
 			storyData[i].dependencies.push_back(potentialDependee);
 
-			// Check if adding the dependency created a cycle in the graph of dependencies (which makes it unsolvable)
-			bool dependencyCreatesCycle = isCyclic(storyData);
-
-			if (dependencyCreatesCycle) {
+			// Check if adding the dependency created a cycle in the graph of dependencies (which makes it unassignable)
+			if (isCyclic(storyData)) {
 				// Remove the offending dependency
 				storyData[i].dependencies.pop_back();
 			}
+
+			// Remove the story from the list of potential dependees
+			storyNumbers.erase(remove(storyNumbers.begin(), storyNumbers.end(), potentialDependee), storyNumbers.end());
 		}
 	}
 
@@ -310,14 +307,57 @@ vector<Sprint> randomlyGenerateSprints(int numberOfSprints, int minCapacity, int
 }
 
 int main(int argc, char* argv[]) {
+	string type;
 	int dataSize;
 
-	switch (argc) {
-	case 2:
-		dataSize = stoi(argv[1]);
+	int minBusinessValue = 1;
+	int maxBusinessValue = 10;
+	int minStoryPoints = 1;
+	int maxStoryPoints = 8;
 
-		if (dataSize % 10 != 0) {
-			cout << "Size must be multiple of 10";
+	int minCapacity = 0;
+	int numberOfFTEs = 5;
+	int storyPointsPerFTE = 8;
+	int maxCapacity = numberOfFTEs * storyPointsPerFTE;
+
+	switch (argc) {
+	case 3:
+		type = argv[1];
+		transform(type.begin(), type.end(), type.begin(), ::tolower);
+
+		dataSize = stoi(argv[2]);
+
+		break;
+	case 7:
+		type = argv[1];
+		transform(type.begin(), type.end(), type.begin(), ::tolower);
+
+		dataSize = stoi(argv[2]);
+
+		if (type == "stories") {
+			minBusinessValue = stoi(argv[3]);
+			maxBusinessValue = stoi(argv[4]);
+			minStoryPoints = stoi(argv[5]);
+			maxStoryPoints = stoi(argv[6]);
+		}
+		else {
+			cout << "Please enter: number of stories, minimum business value, maximum business value, minimum story points, maximum story points";
+			exit(0);
+		}
+
+		break;
+	case 5:
+		type = argv[1];
+		transform(type.begin(), type.end(), type.begin(), ::tolower);
+
+		dataSize = stoi(argv[2]);
+
+		if (type == "sprints") {
+			minCapacity = stoi(argv[3]);
+			maxCapacity = stoi(argv[4]);
+		}
+		else {
+			cout << "Please enter: number of sprints, minimum capacity, maximum capacity";
 			exit(0);
 		}
 
@@ -329,81 +369,52 @@ int main(int argc, char* argv[]) {
 	// Seed the random number generator
 	srand(time(NULL));
 
-	// The number of full time employees able to work on tasks (to estimate the sprint velocity)
-	int numberOfFTEs = 5;
-
-	// The number of sprints available in the roadmap
-	int numberOfSprints;
-	// Holds the data about each sprint
-	vector<Sprint> sprintData;
-
-	// The number of stories in the product backlog
-	int numberOfStories;
-	// Holds the data about each user story
-	vector<Story> storyData;
-
-	// The number of epics in the product backlog
-	int numberOfEpics;
-	// Holds the data about each epic
-	vector<Epic> epicData;
-
 	//cout << "Generating size " << dataSize << "..." << endl;
+	
+	if (type == "stories") {
+		// Holds the data about each user story
+		vector<Story> storyData = randomlyGenerateStories(dataSize, minBusinessValue, maxBusinessValue, minStoryPoints, maxStoryPoints);
 
-	numberOfStories = dataSize;
-	numberOfEpics = max(1.0, numberOfStories * 0.2);
-	numberOfSprints = dataSize;
+		ofstream storiesFile;
+		string storiesFileName = to_string(storyData.size()) + "_stories.csv";
+		storiesFile.open(storiesFileName);
 
-	// Generate some test data to optimise
-	storyData = randomlyGenerateStories(numberOfStories, 1, 10, 1, 8);
+		storiesFile << "story_number,business_value,story_points,dependencies\n";
 
-	// Epics
-	for (int j = 0; j < numberOfEpics; ++j) {
-		epicData.push_back(Epic(j));
-	}
+		for (Story story : storyData) {
+			storiesFile << story.storyNumber << "," << story.businessValue << "," << story.storyPoints;
 
-	// Add every story to a random epic
-	for (Story story : storyData) {
-		epicData[randomInt(0, epicData.size() - 1)].stories.push_back(story);
-	}
+			if (story.dependencies.size() > 0)
+				storiesFile << ",";
 
-	sprintData = randomlyGenerateSprints(numberOfSprints, 0, 8 * numberOfFTEs);
+			for (int k = 0; k < story.dependencies.size(); ++k) {
+				int dependeeNumber = story.dependencies[k];
 
-	ofstream storiesFile;
-	string storiesFileName = to_string(storyData.size()) + "_stories.csv";
-	storiesFile.open(storiesFileName);
+				storiesFile << dependeeNumber;
+				if (k < story.dependencies.size() - 1)
+					storiesFile << ";";
+			}
 
-	storiesFile << "story_number,business_value,story_points,dependencies\n";
-
-	for (Story story : storyData) {
-		storiesFile << story.storyNumber << "," << story.businessValue << "," << story.storyPoints;
-			
-		if (story.dependencies.size() > 0)
-			storiesFile << ",";
-
-		for (int k = 0; k < story.dependencies.size(); ++k) {
-			int dependeeNumber = story.dependencies[k];
-
-			storiesFile << dependeeNumber;
-			if (k < story.dependencies.size() - 1)
-				storiesFile << ";";
+			storiesFile << "\n";
 		}
 
-		storiesFile << "\n";
+		storiesFile.close();
+	} else if (type == "sprints") {
+		// Holds the data about each sprint
+		vector<Sprint> sprintData = randomlyGenerateSprints(dataSize, minCapacity, maxCapacity);
+
+		ofstream sprintsFile;
+		string sprintsFileName = to_string(sprintData.size()) + "_sprints.csv";
+		sprintsFile.open(sprintsFileName);
+
+		sprintsFile << "sprint_number,sprint_capacity,sprint_bonus\n";
+
+		for (Sprint sprint : sprintData) {
+			sprintsFile << sprint.sprintNumber << "," << sprint.sprintCapacity << "," << sprint.sprintBonus << "\n";
+		}
+
+		sprintsFile.close();
 	}
-
-	storiesFile.close();
-
-	ofstream sprintsFile;
-	string sprintsFileName = to_string(sprintData.size()) + "_sprints.csv";
-	sprintsFile.open(sprintsFileName);
-
-	sprintsFile << "sprint_number,sprint_capacity,sprint_bonus\n";
-
-	for (Sprint sprint : sprintData) {
-		sprintsFile << sprint.sprintNumber << "," << sprint.sprintCapacity << "," << sprint.sprintBonus << "\n";
-	}
-
-	sprintsFile.close();
 
 	//cout << "Done" << endl;
 };

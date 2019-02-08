@@ -598,7 +598,7 @@ public:
 		double delta = repairedSolutionValue - currentSolutionValue;
 
 		// Always accept an improving solution (part of the simulated annealing acceptance and tabu aspiration criteria)
-		if (delta >= 0)
+		if (delta > 0)
 			return true;
 
 		// Check if any of the moves made during the repair are tabu
@@ -607,66 +607,102 @@ public:
 			if (tabuList->isTabu(move, currentIteration))
 				return false;
 		}
-		
+
 		// Accept non-improving moves with probability related to the annealing temperature
-		if (exp(-1 * delta / temperature) > randomDouble(0, 1))
+		if (exp(delta / temperature) > randomDouble(0, 1))
 			return true;
 
 		// Didn't meet any of the expected criteria above, just reject the new solution
 		return false;
 	}
 
-	static Roadmap run(Roadmap currentSolution, TabuList *tabuList) {
+	static Roadmap randomRoadmap(vector<Story> storyData, vector<Sprint> sprintData) {
+		vector<Story> shuffledStories = storyData;
+		random_shuffle(shuffledStories.begin(), shuffledStories.end());
+		RepairedRoadmap repairedRoadmap = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
+		return repairedRoadmap.roadmap;
+	}
+
+	static int maxDifference(vector<int> integers) {
+		int minElement = integers[0];
+		int maxElement = integers[1];
+
+		// The maximum difference is the difference between the smallest and largest elements.
+		// So find the min and max integers in the list
+		for (int element : integers) {
+			if (element < minElement)
+				minElement = element;
+			else if (element > maxElement)
+				maxElement = element;
+		}
+
+		return maxElement - minElement;
+	}
+
+	static double calculateInitialTemperature(vector<Story> storyData, vector<Sprint> sprintData) {
+		int trials = storyData.size() * sprintData.size();
+
+		vector<int> randomSolutionValues;
+
+		for (int i = 0; i < trials; ++i) {
+			randomSolutionValues.push_back(randomRoadmap(storyData, sprintData).calculateValue());
+		}
+
+		return maxDifference(randomSolutionValues);
+	}
+
+	static Roadmap run(vector<Story> storyData, vector<Sprint> sprintData) {
 		// TODO
 		// - Dynamically set the number of elements to destroy and the Tabu tenure
 		//		- if the previous n iterations didn't improve, increase by 1
 		//		- cap the maximum
 
-		// The best solution visited so far
-		Roadmap bestSolution = currentSolution;
-		double bestSolutionValue = bestSolution.calculateValue();
-		double currentSolutionValue = bestSolutionValue;
+		int problemSize = storyData.size() * sprintData.size();
 
-		// Simulated annealing parameters
+		// Tabu parameters ///////////////////////////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////
 
-		double initialTemperature = DBL_MAX;
-		double temperature = initialTemperature;
+		int tabuTenure = problemSize * 0.05;
+		TabuList tabuList(tabuTenure);
+
+		// Simulated annealing parameters ////////////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////
+
+		double startTemperature = calculateInitialTemperature(storyData, sprintData);
+		double temperature = startTemperature;
 		double coolingRate = 0.9;
-		//double cooledTemperature = 1e-10;
 
-		int possibleMoves = currentSolution.stories.size() * currentSolution.sprints.size();
-		int maxIterations = 3 * possibleMoves;
-		
-		int runNonImprovingIterations = 0;
-		int maxRunNonImprovingIterations = tabuList->tenure * 2;
+		//////////////////////////////////////////////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////
+
+		Roadmap currentSolution = randomRoadmap(storyData, sprintData);
+		Roadmap bestSolution = currentSolution;
+
+		// Storing the values saves recomputing the same thing at every iteration when comparing with new solutions
+		int currentSolutionValue = currentSolution.calculateValue();
+		int bestSolutionValue = currentSolutionValue;
 
 		int ruinMode = 0; // 0 = radial, 1 = random
 		double degreeOfDestruction = 0.25;
 		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 
-		for (int currentIteration = 1; currentIteration < maxIterations; ++currentIteration) {
-			// Output to see convergence to optimal over time
-			//cout << bestSolutionValue << endl;
+		int maxIterations = problemSize;
+		int maxNonImprovingIterations = maxIterations / 10.0; // maximum of 10 random restarts
+		int nonImprovingIterations = 0;
 
-			// Random restart when the search stagnates
-			if (runNonImprovingIterations > maxRunNonImprovingIterations) {
-				runNonImprovingIterations = 0;
-				temperature = initialTemperature;
+		for (int currentIteration = 0; currentIteration < maxIterations; ++currentIteration) {
+			//cout << currentSolutionValue << "," << bestSolutionValue << endl;
 
-				vector<Story> shuffledStories = currentSolution.stories;
-				random_shuffle(shuffledStories.begin(), shuffledStories.end());
+			if (nonImprovingIterations > maxNonImprovingIterations) {
+				nonImprovingIterations = 0;
+				temperature = startTemperature; // temperature gets reset when a random restart occurs
 
-				RepairedRoadmap randomAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(currentSolution.stories, currentSolution.sprints));
-				currentSolution = randomAssignment.roadmap;
+				currentSolution = randomRoadmap(storyData, sprintData);
 				currentSolutionValue = currentSolution.calculateValue();
-
-				// Add the initial assignments to the tabu list
-				for (Move move : randomAssignment.moves)
-					tabuList->add(move, currentIteration);
 			}
 
 			DestroyedRoadmap destroyedSolution;
-			
+
 			if (ruinMode == 0) {
 				destroyedSolution = radialRuin(currentSolution, numberOfStoriesToRemove);
 			}
@@ -674,13 +710,12 @@ public:
 				destroyedSolution = randomRuin(currentSolution, numberOfStoriesToRemove);
 			}
 
-			RepairedRoadmap repairedSolution = repair(destroyedSolution);
-
 			ruinMode = (ruinMode + 1) % 2;
-
+			
+			RepairedRoadmap repairedSolution = repair(destroyedSolution);
 			int repairedSolutionValue = repairedSolution.roadmap.calculateValue();
 
-			if (accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, currentIteration, tabuList)) {
+			if (accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, currentIteration, &tabuList)) {
 				currentSolution = repairedSolution.roadmap;
 				currentSolutionValue = repairedSolutionValue;
 
@@ -688,26 +723,24 @@ public:
 				// - moves made in the destroyed solution represent moving story A out of sprint B
 				// - adding move 'story A -> sprint B' prevents undoing the move
 				for (Move move : destroyedSolution.moves)
-					tabuList->add(move, currentIteration);
+					tabuList.add(move, currentIteration);
 
-				if (currentSolutionValue > bestSolutionValue && currentSolution.isFeasible()) { // Maximisation
+				if (currentSolutionValue > bestSolutionValue) {
 					bestSolution = currentSolution;
 					bestSolutionValue = currentSolutionValue;
 
-					runNonImprovingIterations = 0;
+					nonImprovingIterations = 0;
 				}
 				else {
-					++runNonImprovingIterations;
+					++nonImprovingIterations;
 				}
 			}
 			else {
-				++runNonImprovingIterations;
+				++nonImprovingIterations;
 			}
 
 			temperature *= coolingRate;
 		}
-
-		//cout << "\tBest: " << bestSolutionValue << endl;
 
 		return bestSolution;
 	}
@@ -811,37 +844,9 @@ int main(int argc, char* argv[]) {
 	// Local search //////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
-	// TODO
-	// - Use CPLEX to find an initial feasible, complete solution?
-	
-	// A complete, feasible roadmap
-	//cout << "Building an initial solution..." << endl;
 	auto t_initialStart = chrono::high_resolution_clock::now();
-
-	// Tabu search parameters
-
-	double possibleMoves = storyData.size() * sprintData.size();
-
-	int tabuTenure = possibleMoves * 0.05;
-	TabuList tabuList(tabuTenure);
-
-	vector<Story> shuffledStories = storyData;
-	random_shuffle(shuffledStories.begin(), shuffledStories.end());
-	RepairedRoadmap firstAssignment = LNS::greedyInsertStories(shuffledStories, Roadmap(storyData, sprintData));
 	
-	Roadmap initialSolution = firstAssignment.roadmap;
-	
-	// Add the initial assignments to the tabu list at iteration 0
-	for (Move move : firstAssignment.moves)
-		tabuList.add(move, 0);
-
-	// Start the search ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	Roadmap bestSolution = LNS::run(initialSolution, &tabuList);
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	Roadmap bestSolution = LNS::run(storyData, sprintData);
 
 	// Greedily assign any unassigned stories, if possible
 	if (!bestSolution.sprintToStories.empty()) {
@@ -875,6 +880,9 @@ int main(int argc, char* argv[]) {
 
 	// Output to see convergence to optimal over time
 	//cout << bestSolution.calculateValue() << endl;
+
+	// Output to see value vs elapsed time
+	//cout << bestSolution.calculateValue() << "," << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << endl;
 
 	cout << endl << "LNS" << endl;
 	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
