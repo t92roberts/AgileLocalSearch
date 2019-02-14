@@ -1,5 +1,4 @@
 #include <iostream>
-#include <fstream>
 #include <vector>
 #include <string>
 #include <chrono>
@@ -375,45 +374,33 @@ int main(int argc, char* argv[]) {
 		// Holds the data about each user story
 		vector<Story> storyData = randomlyGenerateStories(dataSize, minBusinessValue, maxBusinessValue, minStoryPoints, maxStoryPoints);
 
-		ofstream storiesFile;
-		string storiesFileName = to_string(storyData.size()) + "_stories.csv";
-		storiesFile.open(storiesFileName);
-
-		storiesFile << "story_number,business_value,story_points,dependencies\n";
+		cout << "story_number,business_value,story_points,dependencies\n";
 
 		for (Story story : storyData) {
-			storiesFile << story.storyNumber << "," << story.businessValue << "," << story.storyPoints;
+			cout << story.storyNumber << "," << story.businessValue << "," << story.storyPoints;
 
 			if (story.dependencies.size() > 0)
-				storiesFile << ",";
+				cout << ",";
 
 			for (int k = 0; k < story.dependencies.size(); ++k) {
 				int dependeeNumber = story.dependencies[k];
 
-				storiesFile << dependeeNumber;
+				cout << dependeeNumber;
 				if (k < story.dependencies.size() - 1)
-					storiesFile << ";";
+					cout << ";";
 			}
 
-			storiesFile << "\n";
+			cout << "\n";
 		}
-
-		storiesFile.close();
 	} else if (type == "sprints") {
 		// Holds the data about each sprint
 		vector<Sprint> sprintData = randomlyGenerateSprints(dataSize, minCapacity, maxCapacity);
 
-		ofstream sprintsFile;
-		string sprintsFileName = to_string(sprintData.size()) + "_sprints.csv";
-		sprintsFile.open(sprintsFileName);
-
-		sprintsFile << "sprint_number,sprint_capacity,sprint_bonus\n";
+		cout << "sprint_number,sprint_capacity,sprint_bonus\n";
 
 		for (Sprint sprint : sprintData) {
-			sprintsFile << sprint.sprintNumber << "," << sprint.sprintCapacity << "," << sprint.sprintBonus << "\n";
+			cout << sprint.sprintNumber << "," << sprint.sprintCapacity << "," << sprint.sprintBonus << "\n";
 		}
-
-		sprintsFile.close();
 	}
 
 	//cout << "Done" << endl;

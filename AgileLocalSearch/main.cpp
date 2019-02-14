@@ -511,25 +511,26 @@ public:
 		vector<Story> removedStories;
 		vector<Move> moves;
 
-		while (removedStories.size() < numberOfStoriesToRemove) {
-			Story randomStory;
+		// Used to randomly select stories without replacement
+		vector<Story> stories = completeSolution.stories;
 
-			// Keep trying to find a random story that hasn't already been added to the list
-			do {
-				randomStory = completeSolution.stories[randomInt(0, completeSolution.stories.size() - 1)];
-			} while (find(removedStories.begin(), removedStories.end(), randomStory) != removedStories.end());
+		while (removedStories.size() < numberOfStoriesToRemove) {
+			Story randomStory = stories[randomInt(0, stories.size() - 1)];
 
 			// Add the story's dependencies to the list
 			removedStories = traverseDependenciesBF(randomStory, completeSolution, removedStories, numberOfStoriesToRemove);
-		}
 
-		// Remove the stories from their sprints
-		for (Story removedStory : removedStories) {
-			Sprint removedStorySprint = completeSolution.storyToSprint[removedStory];
-			completeSolution.removeStoryFromSprint(removedStory, removedStorySprint);
+			for (Story removedStory : removedStories) {
+				// Remove the stories from their sprints
+				Sprint removedStorySprint = completeSolution.storyToSprint[removedStory];
+				completeSolution.removeStoryFromSprint(removedStory, removedStorySprint);
 
-			// Add to the list of moves (which will be checked against the tabu list later)
-			moves.push_back(Move(removedStory, removedStorySprint));
+				// Remove the story from the list on unremoved stories
+				stories.erase(remove(stories.begin(), stories.end(), removedStory), stories.end());
+
+				// Add to the list of moves (which will be checked against the tabu list later)
+				moves.push_back(Move(removedStory, removedStorySprint));
+			}
 		}
 
 		return DestroyedRoadmap(completeSolution, removedStories, moves);
@@ -541,18 +542,18 @@ public:
 		vector<Story> removedStories;
 		vector<Move> moves;
 
-		// Keep removing stories until the required number have been removed
-		while (removedStories.size() < numberOfStoriesToRemove) {
-			Story randomStory;
+		// Used to randomly select stories without replacement
+		vector<Story> stories = completeSolution.stories;
 
-			// Keep trying to find a random story that hasn't already been added to the list
-			do {
-				randomStory = completeSolution.stories[randomInt(0, completeSolution.stories.size() - 1)];
-			} while (find(removedStories.begin(), removedStories.end(), randomStory) != removedStories.end());
+		while (removedStories.size() < numberOfStoriesToRemove) {
+			Story randomStory = stories[randomInt(0, stories.size() - 1)];
 			Sprint randomStorySprint = completeSolution.storyToSprint[randomStory];
 
 			removedStories.push_back(randomStory);
 			completeSolution.removeStoryFromSprint(randomStory, randomStorySprint);
+
+			// Remove the story from the list on unremoved stories
+			stories.erase(remove(stories.begin(), stories.end(), randomStory), stories.end());
 
 			// Add to the list of moves (which will be checked against the tabu list later)
 			moves.push_back(Move(randomStory, randomStorySprint));
@@ -686,9 +687,9 @@ public:
 		double degreeOfDestruction = 0.25;
 		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 
-		int maxIterations = problemSize;
-		int maxNonImprovingIterations = maxIterations / 10.0; // maximum of 10 random restarts
+		int maxIterations = 2 * problemSize;
 		int nonImprovingIterations = 0;
+		int maxNonImprovingIterations = maxIterations / 10.0; // maximum of 10 random restarts
 
 		for (int currentIteration = 0; currentIteration < maxIterations; ++currentIteration) {
 			//cout << currentSolutionValue << "," << bestSolutionValue << endl;
@@ -710,7 +711,7 @@ public:
 				destroyedSolution = randomRuin(currentSolution, numberOfStoriesToRemove);
 			}
 
-			ruinMode = (ruinMode + 1) % 2;
+			ruinMode = (ruinMode + 1) % 2; // alternate to the other ruin mode
 			
 			RepairedRoadmap repairedSolution = repair(destroyedSolution);
 			int repairedSolutionValue = repairedSolution.roadmap.calculateValue();
