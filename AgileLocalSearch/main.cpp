@@ -726,7 +726,7 @@ public:
 				for (Move move : destroyedSolution.moves)
 					tabuList.add(move, currentIteration);
 
-				if (currentSolutionValue > bestSolutionValue) {
+				if (currentSolution.isFeasible() && currentSolutionValue > bestSolutionValue) {
 					bestSolution = currentSolution;
 					bestSolutionValue = currentSolutionValue;
 
@@ -885,11 +885,13 @@ int main(int argc, char* argv[]) {
 	// Output to see value vs elapsed time
 	//cout << bestSolution.calculateValue() << "," << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << endl;
 
-	cout << endl << "LNS" << endl;
+	/*cout << endl << "LNS" << endl;
 	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
 	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl;
 	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
-	cout << "----------------------------------------" << endl;
+	cout << "----------------------------------------" << endl;*/
+
+	cout << storyData.size() << "," << sprintData.size() - 1 << "," << bestSolution.calculateValue() << "," << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count();
 
 	return 0;
 }
