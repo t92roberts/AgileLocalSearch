@@ -572,7 +572,7 @@ public:
 
 			// Greedily re-insert the story into a sprint
 			for (Sprint sprint : roadmap.sprints) {
-				if (sprint.sprintNumber == -1 || roadmap.validInsert(story, sprint)) {
+				if (roadmap.validInsert(story, sprint)) {
 					roadmap.addStoryToSprint(story, sprint);
 					storiesToInsert.erase(remove(storiesToInsert.begin(), storiesToInsert.end(), story), storiesToInsert.end());
 
@@ -716,7 +716,7 @@ public:
 			RepairedRoadmap repairedSolution = repair(destroyedSolution);
 			int repairedSolutionValue = repairedSolution.roadmap.calculateValue();
 
-			if (accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, currentIteration, &tabuList)) {
+			if (repairedSolution.roadmap.isFeasible() && accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, currentIteration, &tabuList)) {
 				currentSolution = repairedSolution.roadmap;
 				currentSolutionValue = repairedSolutionValue;
 
