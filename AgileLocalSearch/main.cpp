@@ -25,6 +25,7 @@ class Story {
 public:
 	int storyNumber, businessValue, storyPoints;
 	vector<int> dependencies;
+	vector<int> dependees;
 
 	Story() {};
 
@@ -58,6 +59,23 @@ public:
 			return "None";
 	}
 
+	string printDependees() {
+		if (this->dependees.size() > 0) {
+			string dependeesString = "";
+
+			for (int i = 0; i < this->dependees.size(); ++i) {
+				if (i == 0)
+					dependeesString += "Story " + to_string(this->dependees[i]);
+				else
+					dependeesString += ", Story " + to_string(this->dependees[i]);
+			}
+
+			return dependeesString;
+		}
+		else
+			return "None";
+	}
+
 	bool operator == (const Story& other) const {
 		return this->storyNumber == other.storyNumber;
 	}
@@ -77,8 +95,8 @@ public:
 	string toString() {
 		return "Story " + to_string(storyNumber)
 			+ " (business value: " + to_string(businessValue)
-			+ ", story points: " + to_string(storyPoints)
-			+ ", dependencies: " + printDependencies() + ")";
+			+ " | story points: " + to_string(storyPoints)
+			+ " | dependencies: " + printDependencies() + ")";
 	}
 };
 
@@ -161,31 +179,45 @@ public:
 	}
 
 	bool validInsert(Story story, Sprint sprint) {
-		// It's always valid to add a story to the product backlog sprint
-		if (sprint.sprintNumber == -1)
-			return true;
-
-		// Check if adding the story to the sprint overloads the sprint
-		if ((story.storyPoints + storyPointsAssignedToSprint(sprint)) > sprint.sprintCapacity)
+		// Check if adding the story overloads the sprint
+		if (story.storyPoints + storyPointsAssignedToSprint(sprint) > sprint.sprintCapacity && sprint.sprintNumber != -1)
 			return false;
 
-		// Check that each of the story's dependencies are assigned before the sprint
-		for (int dependeeNumber : story.dependencies) {
+		// Check that no dependees are assigned earlier/same as the sprint
+		for (int dependeeNumber : story.dependees) {
 			Story dependee = stories[dependeeNumber];
-			
+
+			auto it = storyToSprint.find(dependee);
+
+			// The dependee is assigned somewhere
+			if (it != storyToSprint.end()) {
+				Sprint dependeeAssignedSprint = it->second;
+
+				// The dependee is assigned earlier/same as this sprint
+				if (dependeeAssignedSprint.sprintNumber <= sprint.sprintNumber && dependeeAssignedSprint.sprintNumber != -1)
+					return false;
+			}
+		}
+
+		// Check that each of the story's dependencies are assigned before the sprint
+		for (int dependencyNumber : story.dependencies) {
+			Story dependency = stories[dependencyNumber];
+
+			auto it = storyToSprint.find(dependency);
+
 			// Only stories that are assigned to a sprint are in the map
-			if (storyToSprint.find(dependee) == storyToSprint.end())
+			if (it == storyToSprint.end())
 				// The dependee isn't assigned to a sprint
 				return false;
 
-			Sprint dependeeAssignedSprint = storyToSprint[dependee];
-			
+			Sprint dependencyAssignedSprint = it->second;
+
 			// The dependee is assigned to the product backlog
-			if (dependeeAssignedSprint.sprintNumber == -1)
+			if (dependencyAssignedSprint.sprintNumber == -1)
 				return false;
-			
+
 			// The story is assigned to an earlier sprint than its dependee
-			if (sprint.sprintNumber <= dependeeAssignedSprint.sprintNumber)
+			if (sprint.sprintNumber <= dependencyAssignedSprint.sprintNumber)
 				return false;
 		}
 
@@ -572,7 +604,7 @@ public:
 
 			// Greedily re-insert the story into a sprint
 			for (Sprint sprint : roadmap.sprints) {
-				if (roadmap.validInsert(story, sprint)) {
+				if (sprint.sprintNumber == -1 || roadmap.validInsert(story, sprint)) {
 					roadmap.addStoryToSprint(story, sprint);
 					storiesToInsert.erase(remove(storiesToInsert.begin(), storiesToInsert.end(), story), storiesToInsert.end());
 
@@ -716,7 +748,7 @@ public:
 			RepairedRoadmap repairedSolution = repair(destroyedSolution);
 			int repairedSolutionValue = repairedSolution.roadmap.calculateValue();
 
-			if (repairedSolution.roadmap.isFeasible() && accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, currentIteration, &tabuList)) {
+			if (accept(repairedSolution, repairedSolutionValue, currentSolutionValue, temperature, currentIteration, &tabuList) && repairedSolution.roadmap.isFeasible()) {
 				currentSolution = repairedSolution.roadmap;
 				currentSolutionValue = repairedSolutionValue;
 
@@ -726,7 +758,7 @@ public:
 				for (Move move : destroyedSolution.moves)
 					tabuList.add(move, currentIteration);
 
-				if (currentSolution.isFeasible() && currentSolutionValue > bestSolutionValue) {
+				if (currentSolutionValue > bestSolutionValue && currentSolution.isFeasible()) {
 					bestSolution = currentSolution;
 					bestSolutionValue = currentSolutionValue;
 
@@ -809,6 +841,12 @@ int main(int argc, char* argv[]) {
 				}
 			}
 		}
+
+		for (Story story : storyData) {
+			for (int dependency : story.dependencies) {
+				storyData[dependency].dependees.push_back(story.storyNumber);
+			}
+		}
 	} else {
 		cout << "Cannot open story data file" << endl;
 		exit(0);
@@ -875,7 +913,7 @@ int main(int argc, char* argv[]) {
 	//cout << initialSolution.printSprintRoadmap();
 
 	//cout << endl << "Best solution --------------------------------------------------" << endl << endl;
-	//cout << bestSolution.printSprintRoadmap();
+	cout << bestSolution.printSprintRoadmap();
 
 	//////////////////////////////////////////////////////////////////////////
 
@@ -885,13 +923,13 @@ int main(int argc, char* argv[]) {
 	// Output to see value vs elapsed time
 	//cout << bestSolution.calculateValue() << "," << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << endl;
 
-	/*cout << endl << "LNS" << endl;
+	cout << endl << "LNS" << endl;
 	cout << "Stories: " << storyData.size() << ", sprints: " << sprintData.size() - 1 << endl;
 	cout << "Solved in " << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count() << " ms" << endl;
 	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
-	cout << "----------------------------------------" << endl;*/
+	cout << "----------------------------------------" << endl;
 
-	cout << storyData.size() << "," << sprintData.size() - 1 << "," << bestSolution.calculateValue() << "," << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count();
+	//cout << storyData.size() << "," << sprintData.size() - 1 << "," << bestSolution.calculateValue() << "," << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count();
 
 	return 0;
 }
