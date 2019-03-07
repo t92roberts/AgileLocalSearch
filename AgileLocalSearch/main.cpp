@@ -152,11 +152,13 @@ public:
 class StoryGreedySorting {
 public:
 	bool operator()(Story const& a, Story const& b) {
-		if (a.dependencies.size() < b.dependencies.size())
+		if (a.businessValue > b.businessValue)
 			return true;
-		else if (a.dependencies.size() == b.dependencies.size() && a.businessValue > b.businessValue)
+		else if (a.businessValue == b.businessValue && a.storyPoints < b.storyPoints)
 			return true;
-		else if (a.dependencies.size() == b.dependencies.size() && a.businessValue == b.businessValue && a.storyPoints < b.storyPoints)
+		else if (a.businessValue == b.businessValue && a.storyPoints == b.storyPoints && a.dependencies.size() < b.dependencies.size())
+			return true;
+		else if (a.businessValue == b.businessValue && a.storyPoints == b.storyPoints && a.dependencies.size() == b.dependencies.size() && a.dependees.size() < b.dependees.size())
 			return true;
 		else
 			return false;
@@ -339,31 +341,30 @@ public:
 		string outputString = "";
 
 		for (Sprint sprint : sprints) {
-			if (sprint.sprintNumber == -1)
-				outputString += "Product Backlog";
-			else
-				outputString += sprint.toString();
-
 			vector<Story> sprintStories = sprintToStories[sprint];
-			int valueDelivered = 0;
-			int storyPointsAssigned = 0;
 
-			if (sprintStories.empty()) {
-				outputString += "\n\tNone";
-			} else {
+			if (!sprintStories.empty()) {
+				if (sprint.sprintNumber == -1)
+					outputString += "Product Backlog";
+				else
+					outputString += sprint.toString();
+
+				int valueDelivered = 0;
+				int storyPointsAssigned = 0;
+
 				for (Story story : sprintStories) {
 					valueDelivered += story.businessValue;
 					storyPointsAssigned += story.storyPoints;
 
 					outputString += "\n\t" + story.toString();
 				}
+
+				outputString += "\n-- [Value: " + to_string(valueDelivered)
+					+ " (weighted value: " + to_string(valueDelivered * sprint.sprintBonus) + "), "
+					+ "story points: " + to_string(storyPointsAssigned) + "]";
+
+				outputString += "\n\n";
 			}
-
-			outputString += "\n-- [Value: " + to_string(valueDelivered) 
-				+ " (weighted value: " + to_string(valueDelivered * sprint.sprintBonus) + "), "
-				+ "story points: " + to_string(storyPointsAssigned) + "]";
-
-			outputString += "\n\n";
 		}
 
 		return outputString;
@@ -695,7 +696,7 @@ public:
 		// Tabu parameters ///////////////////////////////////////////////////////
 		//////////////////////////////////////////////////////////////////////////
 
-		int tabuTenure = problemSize * 0.05;
+		int tabuTenure = problemSize * 0.1;
 		TabuList tabuList(tabuTenure);
 
 		// Simulated annealing parameters ////////////////////////////////////////
@@ -716,7 +717,7 @@ public:
 		int bestSolutionValue = currentSolutionValue;
 
 		int ruinMode = 0; // 0 = radial, 1 = random
-		double degreeOfDestruction = 0.25;
+		double degreeOfDestruction = 0.15;
 		int numberOfStoriesToRemove = max(1.0, round(degreeOfDestruction * currentSolution.stories.size()));
 
 		int maxIterations = 2 * problemSize;
@@ -929,7 +930,8 @@ int main(int argc, char* argv[]) {
 	cout << "Total weighted business value: " << bestSolution.calculateValue() << endl;
 	cout << "----------------------------------------" << endl;
 
-	//cout << storyData.size() << "," << sprintData.size() - 1 << "," << bestSolution.calculateValue() << "," << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count();
+	//cout << endl << storyData.size() << "," << sprintData.size() - 1 << "," << set << "," << repetition << "," << heuristic;
+	//cout << "," << bestSolution.calculateValue() << "," << chrono::duration<double, std::milli>(t_solveEnd - t_initialStart).count();
 
 	return 0;
 }
